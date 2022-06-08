@@ -100,8 +100,41 @@ extension SymbolGraph {
         public var accessLevel: AccessControl
 
         /// Information about a symbol that is not necessarily common to all symbols.
+        ///
+        /// - Warning: If you intend to ``encode(to:)`` this symbol, make sure to ``register(_:)``
+        /// any added ``Mixin``s that do not appear on symbols in the standard format.
+        ///
+        /// - Note: You can use the ``subscript(mixin:)`` to automatically ``register(_:)``
+        /// the ``Mixin`` types you add.
         public var mixins: [String: Mixin] = [:]
-
+        
+        /// Information about a symbol that is not necessarily common to all symbols.
+        ///
+        /// - Note: ``Mixin``s added via this subscript will be included when encoding this type.
+        public subscript<M: Mixin>(mixin mixin: M.Type = M.self) -> M? {
+            get {
+                mixins[mixin.mixinKey] as? M
+            }
+            set {
+                mixins[mixin.mixinKey] = newValue
+                
+                if !CodingKeys.mixinKeys.contains(CodingKeys(rawValue: M.mixinKey)) {
+                    CodingKeys.mixinKeys.update(with: M.symbolCodingKey)
+                }
+            }
+        }
+        
+        /// Register types conforming to ``Mixin`` so they can be included when encoding or
+        /// decoding symbols.
+        ///
+        /// If ``Symbol`` does not know the concrete type of a ``Mixin``, it cannot encode
+        /// or decode that type and thus skipps such entries. Note that ``Mixin``s that occur on symbols
+        /// in the default symbol graph format do not have to be registered!
+        public static func register(_ mixinTypes: Mixin.Type...) {
+            CodingKeys.mixinKeys.formUnion(mixinTypes.map { type in type.symbolCodingKey })
+        }
+        
+        
         public init(identifier: Identifier, names: Names, pathComponents: [String], docComment: LineList?, accessLevel: AccessControl, kind: Kind, mixins: [String: Mixin]) {
             self.identifier = identifier
             self.names = names
@@ -110,42 +143,6 @@ extension SymbolGraph {
             self.accessLevel = accessLevel
             self.kind = kind
             self.mixins = mixins
-        }
-
-        enum CodingKeys: String, Hashable, CaseIterable, CodingKey {
-            // Base
-            case identifier
-            case kind
-            case pathComponents
-            case type
-            case names
-            case docComment
-            case accessLevel
-
-            // Mixins
-            case availability
-            case declarationFragments
-            case isReadOnly
-            case swiftExtension
-            case swiftGenerics
-            case location
-            case functionSignature
-            case spi
-            case snippet
-
-            static var mixinKeys: Set<CodingKeys> {
-                return [
-                    .availability,
-                    .declarationFragments,
-                    .isReadOnly,
-                    .swiftExtension,
-                    .swiftGenerics,
-                    .location,
-                    .functionSignature,
-                    .spi,
-                    .snippet,
-                ]
-            }
         }
 
         public init(from decoder: Decoder) throws {
@@ -157,13 +154,17 @@ extension SymbolGraph {
             names = try container.decode(Names.self, forKey: .names)
             docComment = try container.decodeIfPresent(LineList.self, forKey: .docComment)
             accessLevel = try container.decode(AccessControl.self, forKey: .accessLevel)
-            let leftoverMetadataKeys = Set(container.allKeys).intersection(CodingKeys.mixinKeys)
-            for key in leftoverMetadataKeys {
-                if let decoded = try decodeMetadataItemForKey(key, from: container) {
-                    mixins[key.stringValue] = decoded
-                } else {
-                    // do an AnyMetadataInfo
+            
+            let mixinKeys = Set(container.allKeys).intersection(CodingKeys.mixinKeys)
+            
+            for key in mixinKeys {
+                guard let decode = key.decoder else {
+                    continue
                 }
+                
+                let decoded = try decode(key, container)
+                
+                mixins[key.stringValue] = decoded
             }
         }
 
@@ -182,54 +183,15 @@ extension SymbolGraph {
             // Mixins
 
             for (key, mixin) in mixins {
-                let key = CodingKeys(rawValue: key)!
-                switch key {
-                case .availability:
-                    try container.encode(mixin as! Availability, forKey: key)
-                case .declarationFragments:
-                    try container.encode(mixin as! DeclarationFragments, forKey: key)
-                case .isReadOnly:
-                    try container.encode(mixin as! Mutability, forKey: key)
-                case .swiftExtension:
-                    try container.encode(mixin as! Swift.Extension, forKey: key)
-                case .swiftGenerics:
-                    try container.encode(mixin as! Swift.Generics, forKey: key)
-                case .functionSignature:
-                    try container.encode(mixin as! FunctionSignature, forKey: key)
-                case .spi:
-                    try container.encode(mixin as! SPI, forKey: key)
-                case .snippet:
-                    try container.encode(mixin as! Snippet, forKey: key)
-                case .location:
-                    try container.encode(mixin as! Location, forKey: key)
-                default:
-                    fatalError("Unknown mixin key \(key.rawValue)!")
+                guard let key = CodingKeys(stringValue: key) else {
+                    continue
                 }
-            }
-        }
-
-        func decodeMetadataItemForKey(_ key: CodingKeys, from container: KeyedDecodingContainer<CodingKeys>) throws -> Mixin? {
-            switch key.stringValue {
-            case Availability.mixinKey:
-                return try container.decode(Availability.self, forKey: key)
-            case Location.mixinKey:
-                return try? container.decode(Location.self, forKey: key)
-            case Mutability.mixinKey:
-                return try container.decode(Mutability.self, forKey: key)
-            case FunctionSignature.mixinKey:
-                return try container.decode(FunctionSignature.self, forKey: key)
-            case DeclarationFragments.mixinKey:
-                return try container.decode(DeclarationFragments.self, forKey: key)
-            case Swift.Extension.mixinKey:
-                return try container.decode(Swift.Extension.self, forKey: key)
-            case Swift.Generics.mixinKey:
-                return try container.decode(Swift.Generics.self, forKey: key)
-            case SPI.mixinKey:
-                return try container.decode(SPI.self, forKey: key)
-            case Snippet.mixinKey:
-                return try container.decode(Snippet.self, forKey: key)
-            default:
-                return nil
+                
+                guard let encode = key.encoder else {
+                    continue
+                }
+                
+                try encode(key, mixin, &container)
             }
         }
 
@@ -238,6 +200,93 @@ extension SymbolGraph {
          */
         public var absolutePath: String {
             return pathComponents.joined(separator: "/")
+        }
+    }
+}
+
+extension SymbolGraph.Symbol {
+    struct CodingKeys: CodingKey, Hashable {
+        let stringValue: String
+        let encoder: ((Self, Mixin, inout KeyedEncodingContainer<CodingKeys>) throws -> ())?
+        let decoder: ((Self, KeyedDecodingContainer<CodingKeys>) throws -> Mixin?)?
+        
+        
+        init?(stringValue: String) {
+            // When a decoder initializes such coding key from a
+            // string, this implementation tries to find an equivalent
+            // coding key in the static set. If such key is found, this
+            // key is used as it contains the required logic for decoding.
+            let candidate = CodingKeys(rawValue: stringValue)
+            if let index = Self.baseKeys.firstIndex(of: candidate) {
+                self = Self.baseKeys[index]
+            } else if let index = Self.mixinKeys.firstIndex(of: candidate) {
+                self = Self.mixinKeys[index]
+            } else {
+                return nil
+            }
+        }
+        
+        init(rawValue: String,
+             encoder: ((Self, Mixin, inout KeyedEncodingContainer<CodingKeys>) throws -> ())? = nil,
+             decoder: ((Self, KeyedDecodingContainer<CodingKeys>) throws -> Mixin?)? = nil) {
+            self.stringValue = rawValue
+            self.encoder = encoder
+            self.decoder = decoder
+        }
+        
+        // Base
+        static let identifier = CodingKeys(rawValue: "identifier")
+        static let kind = CodingKeys(rawValue: "kind")
+        static let pathComponents = CodingKeys(rawValue: "pathComponents")
+        static let type = CodingKeys(rawValue: "type")
+        static let names = CodingKeys(rawValue: "names")
+        static let docComment = CodingKeys(rawValue: "docComment")
+        static let accessLevel = CodingKeys(rawValue: "accessLevel")
+        
+        static let baseKeys: Set<CodingKeys> = [.identifier,
+                                                .kind,
+                                                .pathComponents,
+                                                .type,
+                                                .names,
+                                                .docComment,
+                                                .accessLevel]
+        
+
+        // Mixins
+        static let availability = Availability.symbolCodingKey
+        static let declarationFragments = DeclarationFragments.symbolCodingKey
+        static let isReadOnly = Mutability.symbolCodingKey
+        static let swiftExtension = Swift.Extension.symbolCodingKey
+        static let swiftGenerics = Swift.Generics.symbolCodingKey
+        static let location = Location.symbolCodingKey
+        static let functionSignature = FunctionSignature.symbolCodingKey
+        static let spi = SPI.symbolCodingKey
+        static let snippet = Snippet.symbolCodingKey
+        
+        static var mixinKeys: Set<CodingKeys> = [
+            .availability,
+            .declarationFragments,
+            .isReadOnly,
+            .swiftExtension,
+            .swiftGenerics,
+            .location,
+            .functionSignature,
+            .spi,
+            .snippet,
+        ]
+        
+        static func == (lhs: SymbolGraph.Symbol.CodingKeys, rhs: SymbolGraph.Symbol.CodingKeys) -> Bool {
+            lhs.stringValue == rhs.stringValue
+        }
+        
+        func hash(into hasher: inout Hasher) {
+            stringValue.hash(into: &hasher)
+        }
+        
+        var intValue: Int? { nil }
+        
+        init?(intValue: Int) {
+            nil
         }
     }
 }

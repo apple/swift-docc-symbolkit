@@ -32,12 +32,12 @@ class SymbolKindTests: XCTestCase {
         // Verify a bare language is not recognized.
         XCTAssertFalse(SymbolGraph.Symbol.KindIdentifier.isKnownIdentifier("swift"))
         kind = SymbolGraph.Symbol.KindIdentifier(identifier: "swift")
-        XCTAssertEqual(kind, .unknown)
+        XCTAssertEqual(kind.identifier, "swift")
 
         // Verify if nothing is recognized, identifier and name is still there.
         XCTAssertFalse(SymbolGraph.Symbol.KindIdentifier.isKnownIdentifier("swift.madeupapi"))
         kind = SymbolGraph.Symbol.KindIdentifier(identifier: "swift.madeupapi")
-        XCTAssertEqual(kind, .unknown)
+        XCTAssertEqual(kind.identifier, "swift.madeupapi")
     }
 
     func testKindDecoding() throws {

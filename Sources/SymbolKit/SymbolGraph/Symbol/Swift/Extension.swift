@@ -23,6 +23,16 @@ extension SymbolGraph.Symbol.Swift {
          > Note: This module maybe different than where the symbol was actually defined. For example, one can create a public extension on the Swift Standard Library's `String` type in a different module, so `extendedModule` would be `Swift`.
          */
         public var extendedModule: String
+        
+        /**
+         The ``SymbolGraph/Symbol/KindIdentifier`` of the symbol this
+         extension extends.
+         
+         Usually, this will be either of ``SymbolGraph/Symbol/KindIdentifier/struct``,
+         ``SymbolGraph/Symbol/KindIdentifier/class``, ``SymbolGraph/Symbol/KindIdentifier/enum``
+         or ``SymbolGraph/Symbol/KindIdentifier/protocol``.
+         */
+        public var typeKind: SymbolGraph.Symbol.KindIdentifier
 
         /**
          The ``SymbolGraph/Symbol/KindIdentifier`` of the symbol this

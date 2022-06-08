@@ -14,70 +14,93 @@ extension SymbolGraph.Symbol {
     /**
      A unique identifier of a symbol's kind, such as a structure or protocol.
      */
-    public enum KindIdentifier: Equatable, Hashable, Codable, CaseIterable {
-        case `associatedtype`
-        case `class`
-        case `deinit`
-        case `enum`
-        case `case`
-        case `func`
-        case `operator`
-        case `init`
-        case ivar
-        case macro
-        case method
-        case property
-        case `protocol`
-        case snippet
-        case snippetGroup
-        case `struct`
-        case `subscript`
-        case typeMethod
-        case typeProperty
-        case typeSubscript
-        case `typealias`
-        case `var`
-
-        case module
+    public struct KindIdentifier: Equatable, Hashable, Codable, CaseIterable {
+        private var rawValue: String
+        public init(rawValue: String) {
+            self.rawValue = rawValue
+        }
+      
+        public static let `associatedtype` = KindIdentifier(rawValue: "associatedtype")
         
-        case `extension`
-
-        case unknown
+        public static let `class` = KindIdentifier(rawValue: "class")
+        
+        public static let `deinit` = KindIdentifier(rawValue: "deinit")
+        
+        public static let `enum` = KindIdentifier(rawValue: "enum")
+        
+        public static let `case` = KindIdentifier(rawValue: "enum.case")
+        
+        public static let `func` = KindIdentifier(rawValue: "func")
+        
+        public static let `operator` = KindIdentifier(rawValue: "func.op")
+        
+        public static let `init` = KindIdentifier(rawValue: "init")
+        
+        public static let ivar = KindIdentifier(rawValue: "ivar")
+        
+        public static let macro = KindIdentifier(rawValue: "macro")
+        
+        public static let method = KindIdentifier(rawValue: "method")
+        
+        public static let property = KindIdentifier(rawValue: "property")
+        
+        public static let `protocol` = KindIdentifier(rawValue: "protocol")
+        
+        public static let snippet = KindIdentifier(rawValue: "snippet")
+        
+        public static let snippetGroup = KindIdentifier(rawValue: "snippetGroup")
+        
+        public static let `struct` = KindIdentifier(rawValue: "struct")
+        
+        public static let `subscript` = KindIdentifier(rawValue: "subscript")
+        
+        public static let typeMethod = KindIdentifier(rawValue: "type.method")
+        
+        public static let typeProperty = KindIdentifier(rawValue: "type.property")
+        
+        public static let typeSubscript = KindIdentifier(rawValue: "type.subscript")
+        
+        public static let `typealias` = KindIdentifier(rawValue: "typealias")
+        
+        public static let `var` = KindIdentifier(rawValue: "var")
+        
+        public static let module = KindIdentifier(rawValue: "module")
+        
+        public static let `extension` = KindIdentifier(rawValue: "extension")
 
         /// A string that uniquely identifies the symbol kind.
         ///
         /// If the original kind string was not recognized, this will return `"unknown"`.
         public var identifier: String {
-            switch self {
-            case .associatedtype: return "associatedtype"
-            case .class: return "class"
-            case .deinit: return "deinit"
-            case .enum: return "enum"
-            case .case: return "enum.case"
-            case .func: return "func"
-            case .operator: return "func.op"
-            case .`init`: return "init"
-            case .ivar: return "ivar"
-            case .macro: return "macro"
-            case .method: return "method"
-            case .property: return "property"
-            case .protocol: return "protocol"
-            case .snippet: return "snippet"
-            case .snippetGroup: return "snippetGroup"
-            case .struct: return "struct"
-            case .subscript: return "subscript"
-            case .typeMethod: return "type.method"
-            case .typeProperty: return "type.property"
-            case .typeSubscript: return "type.subscript"
-            case .typealias: return "typealias"
-            case .var: return "var"
-            case .module: return "module"
-            case .extension: return "extension"
-            case .unknown: return "unknown"
-            }
+            rawValue
         }
-
-        // FIXME: Save "unknown" symbol kinds in a synchronized set to prevent loss of data (rdar://84276085)
+        
+        public static let allCases: [Self] = [
+            .associatedtype,
+            .class,
+            .deinit,
+            .enum,
+            .case,
+            .func,
+            .operator,
+            .`init`,
+            .ivar,
+            .macro,
+            .method,
+            .property,
+            .protocol,
+            .snippet,
+            .snippetGroup,
+            .struct,
+            .subscript,
+            .typeMethod,
+            .typeProperty,
+            .typeSubscript,
+            .typealias,
+            .var,
+            .module,
+            .extension
+        ]
 
         /// Check the given identifier string against the list of known identifiers.
         ///
@@ -148,7 +171,12 @@ extension SymbolGraph.Symbol {
                 // (e.g. "swift.func" instead of just "func"), strip off the language prefix and
                 // try again.
                 let cleanIdentifier = KindIdentifier.cleanIdentifier(identifier)
-                self = Self.lookupIdentifier(identifier: cleanIdentifier) ?? .unknown
+                if let secondParse = Self.lookupIdentifier(identifier: cleanIdentifier) {
+                    self = secondParse
+                } else {
+                    // If that doesn't help either, use the original identifier as a raw value.
+                    self = Self.init(rawValue: identifier)
+                }
             }
         }
 

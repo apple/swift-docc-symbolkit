@@ -59,63 +59,24 @@ extension UnifiedSymbolGraph.Symbol: Encodable {
         var selector: UnifiedSymbolGraph.Selector
         var mixins: [String: Mixin]
 
-        enum CodingKeys: CodingKey {
-            case selector
-            case mixinKey(SymbolGraph.Symbol.CodingKeys)
-
-            init?(intValue: Int) { return nil }
-
-            init?(stringValue: String) {
-                if stringValue == "selector" {
-                    self = .selector
-                } else if let key = SymbolGraph.Symbol.CodingKeys(stringValue: stringValue) {
-                    self = .mixinKey(key)
-                } else {
-                    return nil
-                }
-            }
-
-            var stringValue: String {
-                switch self {
-                case .selector: return "selector"
-                case .mixinKey(let key): return key.stringValue
-                }
-            }
-
-            var intValue: Int? { return nil }
-        }
-
         func encode(to encoder: Encoder) throws {
-            var container = encoder.container(keyedBy: CodingKeys.self)
+            // To keep Symbol's flexibility when coding Mixins, we use
+            // Symbol's CodingKeys.
+            var container = encoder.container(keyedBy: SymbolGraph.Symbol.CodingKeys.self)
 
-            try container.encode(selector, forKey: .selector)
+            try container.encode(selector, forKey: SymbolGraph.Symbol.CodingKeys(rawValue: "selector"))
 
             // This is copied from SymbolGraph.Symbol's encoding method
             for (key, mixin) in mixins {
-                let mixKey = SymbolGraph.Symbol.CodingKeys(rawValue: key)!
-                let key = CodingKeys.mixinKey(mixKey)
-                switch mixKey {
-                case .availability:
-                    try container.encode(mixin as! SymbolGraph.Symbol.Availability, forKey: key)
-                case .declarationFragments:
-                    try container.encode(mixin as! SymbolGraph.Symbol.DeclarationFragments, forKey: key)
-                case .isReadOnly:
-                    try container.encode(mixin as! SymbolGraph.Symbol.Mutability, forKey: key)
-                case .swiftExtension:
-                    try container.encode(mixin as! SymbolGraph.Symbol.Swift.Extension, forKey: key)
-                case .swiftGenerics:
-                    try container.encode(mixin as! SymbolGraph.Symbol.Swift.Generics, forKey: key)
-                case .functionSignature:
-                    try container.encode(mixin as! SymbolGraph.Symbol.FunctionSignature, forKey: key)
-                case .spi:
-                    try container.encode(mixin as! SymbolGraph.Symbol.SPI, forKey: key)
-                case .snippet:
-                    try container.encode(mixin as! SymbolGraph.Symbol.Snippet, forKey: key)
-                case .location:
-                    try container.encode(mixin as! SymbolGraph.Symbol.Location, forKey: key)
-                default:
-                    fatalError("Unknown mixin key \(mixKey.rawValue)!")
+                guard let key = SymbolGraph.Symbol.CodingKeys(stringValue: key) else {
+                    continue
                 }
+                
+                guard let encode = key.encoder else {
+                    continue
+                }
+                
+                try encode(key, mixin, &container)
             }
         }
     }
