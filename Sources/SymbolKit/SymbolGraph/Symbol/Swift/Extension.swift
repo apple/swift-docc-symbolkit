@@ -32,7 +32,7 @@ extension SymbolGraph.Symbol.Swift {
          ``SymbolGraph/Symbol/KindIdentifier/class``, ``SymbolGraph/Symbol/KindIdentifier/enum``
          or ``SymbolGraph/Symbol/KindIdentifier/protocol``.
          */
-        public var typeKind: SymbolGraph.Symbol.KindIdentifier
+        public var typeKind: SymbolGraph.Symbol.KindIdentifier?
 
         /**
          The ``SymbolGraph/Symbol/KindIdentifier`` of the symbol this
