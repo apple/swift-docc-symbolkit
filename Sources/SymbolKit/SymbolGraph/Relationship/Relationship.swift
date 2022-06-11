@@ -30,35 +30,18 @@ extension SymbolGraph {
         ///
         /// - Warning: If you intend to ``encode(to:)`` this relationship, make sure to ``register(_:)``
         /// any added ``Mixin``s that do not appear on relationships in the standard format.
-        ///
-        /// - Note: You can use the ``subscript(mixin:)`` to automatically ``register(_:)``
-        /// the ``Mixin`` types you add.
         public var mixins: [String: Mixin] = [:]
         
         /// Extra information about a relationship that is not necessarily common to all relationships
         ///
-        /// - Note: ``Mixin``s added via this subscript will be included when encoding this type.
+        /// - Warning: ``Mixin``s added via this subscript will be included when encoding this type.
         public subscript<M: Mixin>(mixin mixin: M.Type = M.self) -> M? {
             get {
                 mixins[mixin.mixinKey] as? M
             }
             set {
                 mixins[mixin.mixinKey] = newValue
-                
-                if !CodingKeys.mixinKeys.contains(CodingKeys(rawValue: M.mixinKey)) {
-                    CodingKeys.mixinKeys.update(with: M.relationshipCodingKey)
-                }
             }
-        }
-        
-        /// Register types conforming to ``Mixin`` so they can be included when encoding or
-        /// decoding relationships.
-        ///
-        /// If ``Relationship`` does not know the concrete type of a ``Mixin``, it cannot encode
-        /// or decode that type and thus skipps such entries. Note that ``Mixin``s that occur on relationships
-        /// in the default symbol graph format do not have to be registered!
-        public static func register(_ mixinTypes: Mixin.Type...) {
-            CodingKeys.mixinKeys.formUnion(mixinTypes.map { type in type.relationshipCodingKey })
         }
 
         public init(from decoder: Decoder) throws {
@@ -68,9 +51,11 @@ extension SymbolGraph {
             kind = try container.decode(Kind.self, forKey: .kind)
             targetFallback = try container.decodeIfPresent(String.self, forKey: .targetFallback)
             
-            let mixinKeys = Set(container.allKeys).intersection(CodingKeys.mixinKeys)
-            
-            for key in mixinKeys {
+            for key in container.allKeys {
+                guard let key = CodingKeys.mixinKeys[key.stringValue] ?? decoder.registeredRelationshipMixins?[key.stringValue] else {
+                    continue
+                }
+                
                 guard let decode = key.decoder else {
                     continue
                 }
@@ -94,7 +79,7 @@ extension SymbolGraph {
             // Mixins
 
             for (key, mixin) in mixins {
-                guard let key = CodingKeys(stringValue: key) else {
+                guard let key = CodingKeys.mixinKeys[key] ?? encoder.registeredRelationshipMixins?[key] else {
                     continue
                 }
                 
@@ -150,18 +135,7 @@ extension SymbolGraph.Relationship {
         
         
         init?(stringValue: String) {
-            // When a decoder initializes such coding key from a
-            // string, this implementation tries to find an equivalent
-            // coding key in the static set. If such key is found, this
-            // key is used as it contains the required logic for decoding.
-            let candidate = CodingKeys(rawValue: stringValue)
-            if let index = Self.baseKeys.firstIndex(of: candidate) {
-                self = Self.baseKeys[index]
-            } else if let index = Self.mixinKeys.firstIndex(of: candidate) {
-                self = Self.mixinKeys[index]
-            } else {
-                return nil
-            }
+            self = CodingKeys(rawValue: stringValue)
         }
         
         init(rawValue: String,
@@ -177,20 +151,14 @@ extension SymbolGraph.Relationship {
         static let target = CodingKeys(rawValue: "target")
         static let kind = CodingKeys(rawValue: "kind")
         static let targetFallback = CodingKeys(rawValue: "targetFallback")
-        
-        static let baseKeys: Set<CodingKeys> = [.source,
-                                                .target,
-                                                .kind,
-                                                .targetFallback]
-        
 
         // Mixins
         static let swiftConstraints = Swift.GenericConstraints.relationshipCodingKey
         static let sourceOrigin = SourceOrigin.relationshipCodingKey
         
-        static var mixinKeys: Set<CodingKeys> = [
-            .swiftConstraints,
-            .sourceOrigin,
+        static let mixinKeys: [String: CodingKeys] = [
+            CodingKeys.swiftConstraints.stringValue: .swiftConstraints,
+            CodingKeys.sourceOrigin.stringValue: .sourceOrigin,
         ]
         
         static func == (lhs: SymbolGraph.Relationship.CodingKeys, rhs: SymbolGraph.Relationship.CodingKeys) -> Bool {
@@ -207,4 +175,39 @@ extension SymbolGraph.Relationship {
             nil
         }
     }
+}
+
+
+public extension CustomizableCoder {
+    /// Register types conforming to ``Mixin`` so they can be included when encoding or
+    /// decoding relationships.
+    ///
+    /// If ``Relationship`` does not know the concrete type of a ``Mixin``, it cannot encode
+    /// or decode that type and thus skipps such entries. Note that ``Mixin``s that occur on relationships
+    /// in the default symbol graph format do not have to be registered!
+    func register(relationshipMixins mixinTypes: Mixin.Type...) {
+        var registeredMixins = self.userInfo[.relationshipMixinKey] as? [String: SymbolGraph.Relationship.CodingKeys] ?? [:]
+            
+        for type in mixinTypes {
+            registeredMixins[type.mixinKey] = type.relationshipCodingKey
+        }
+        
+        self.userInfo[.relationshipMixinKey] = registeredMixins
+    }
+}
+
+extension Encoder {
+    var registeredRelationshipMixins: [String: SymbolGraph.Relationship.CodingKeys]? {
+        self.userInfo[.relationshipMixinKey] as? [String: SymbolGraph.Relationship.CodingKeys]
+    }
+}
+
+extension Decoder {
+    var registeredRelationshipMixins: [String: SymbolGraph.Relationship.CodingKeys]? {
+        self.userInfo[.relationshipMixinKey] as? [String: SymbolGraph.Relationship.CodingKeys]
+    }
+}
+
+extension CodingUserInfoKey {
+    static let relationshipMixinKey = CodingUserInfoKey(rawValue: "apple.symbolkit.relationshipMixinKey")!
 }

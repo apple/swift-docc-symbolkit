@@ -8,6 +8,8 @@
  See https://swift.org/CONTRIBUTORS.txt for Swift project authors
 */
 
+import Foundation
+
 extension SymbolGraph {
     /**
      A symbol from a module.
@@ -101,39 +103,24 @@ extension SymbolGraph {
 
         /// Information about a symbol that is not necessarily common to all symbols.
         ///
-        /// - Warning: If you intend to ``encode(to:)`` this symbol, make sure to ``register(_:)``
-        /// any added ``Mixin``s that do not appear on symbols in the standard format.
-        ///
-        /// - Note: You can use the ``subscript(mixin:)`` to automatically ``register(_:)``
-        /// the ``Mixin`` types you add.
+        /// - Warning: If you intend to encode/decode this symbol, make sure to register
+        /// any added ``Mixin``s that do not appear on symbols in the standard format
+        /// on your coder using ``CustomizableCoder/register(symbolMixins:)``.
         public var mixins: [String: Mixin] = [:]
         
         /// Information about a symbol that is not necessarily common to all symbols.
         ///
-        /// - Note: ``Mixin``s added via this subscript will be included when encoding this type.
+        /// - Warning: If you intend to encode/decode this symbol, make sure to register
+        /// any added ``Mixin``s that do not appear on symbols in the standard format
+        /// on your coder using ``CustomizableCoder/register(symbolMixins:)``.
         public subscript<M: Mixin>(mixin mixin: M.Type = M.self) -> M? {
             get {
                 mixins[mixin.mixinKey] as? M
             }
             set {
                 mixins[mixin.mixinKey] = newValue
-                
-                if !CodingKeys.mixinKeys.contains(CodingKeys(rawValue: M.mixinKey)) {
-                    CodingKeys.mixinKeys.update(with: M.symbolCodingKey)
-                }
             }
         }
-        
-        /// Register types conforming to ``Mixin`` so they can be included when encoding or
-        /// decoding symbols.
-        ///
-        /// If ``Symbol`` does not know the concrete type of a ``Mixin``, it cannot encode
-        /// or decode that type and thus skipps such entries. Note that ``Mixin``s that occur on symbols
-        /// in the default symbol graph format do not have to be registered!
-        public static func register(_ mixinTypes: Mixin.Type...) {
-            CodingKeys.mixinKeys.formUnion(mixinTypes.map { type in type.symbolCodingKey })
-        }
-        
         
         public init(identifier: Identifier, names: Names, pathComponents: [String], docComment: LineList?, accessLevel: AccessControl, kind: Kind, mixins: [String: Mixin]) {
             self.identifier = identifier
@@ -155,9 +142,11 @@ extension SymbolGraph {
             docComment = try container.decodeIfPresent(LineList.self, forKey: .docComment)
             accessLevel = try container.decode(AccessControl.self, forKey: .accessLevel)
             
-            let mixinKeys = Set(container.allKeys).intersection(CodingKeys.mixinKeys)
-            
-            for key in mixinKeys {
+            for key in container.allKeys {
+                guard let key = CodingKeys.mixinKeys[key.stringValue] ?? decoder.registeredSymbolMixins?[key.stringValue] else {
+                    continue
+                }
+                
                 guard let decode = key.decoder else {
                     continue
                 }
@@ -183,7 +172,7 @@ extension SymbolGraph {
             // Mixins
 
             for (key, mixin) in mixins {
-                guard let key = CodingKeys(stringValue: key) else {
+                guard let key = CodingKeys.mixinKeys[key] ?? encoder.registeredSymbolMixins?[key] else {
                     continue
                 }
                 
@@ -212,18 +201,7 @@ extension SymbolGraph.Symbol {
         
         
         init?(stringValue: String) {
-            // When a decoder initializes such coding key from a
-            // string, this implementation tries to find an equivalent
-            // coding key in the static set. If such key is found, this
-            // key is used as it contains the required logic for decoding.
-            let candidate = CodingKeys(rawValue: stringValue)
-            if let index = Self.baseKeys.firstIndex(of: candidate) {
-                self = Self.baseKeys[index]
-            } else if let index = Self.mixinKeys.firstIndex(of: candidate) {
-                self = Self.mixinKeys[index]
-            } else {
-                return nil
-            }
+            self = CodingKeys(rawValue: stringValue)
         }
         
         init(rawValue: String,
@@ -242,15 +220,6 @@ extension SymbolGraph.Symbol {
         static let names = CodingKeys(rawValue: "names")
         static let docComment = CodingKeys(rawValue: "docComment")
         static let accessLevel = CodingKeys(rawValue: "accessLevel")
-        
-        static let baseKeys: Set<CodingKeys> = [.identifier,
-                                                .kind,
-                                                .pathComponents,
-                                                .type,
-                                                .names,
-                                                .docComment,
-                                                .accessLevel]
-        
 
         // Mixins
         static let availability = Availability.symbolCodingKey
@@ -263,16 +232,16 @@ extension SymbolGraph.Symbol {
         static let spi = SPI.symbolCodingKey
         static let snippet = Snippet.symbolCodingKey
         
-        static var mixinKeys: Set<CodingKeys> = [
-            .availability,
-            .declarationFragments,
-            .isReadOnly,
-            .swiftExtension,
-            .swiftGenerics,
-            .location,
-            .functionSignature,
-            .spi,
-            .snippet,
+        static let mixinKeys: [String: CodingKeys] = [
+            CodingKeys.availability.stringValue: .availability,
+            CodingKeys.declarationFragments.stringValue: .declarationFragments,
+            CodingKeys.isReadOnly.stringValue: .isReadOnly,
+            CodingKeys.swiftExtension.stringValue: .swiftExtension,
+            CodingKeys.swiftGenerics.stringValue: .swiftGenerics,
+            CodingKeys.location.stringValue: .location,
+            CodingKeys.functionSignature.stringValue: .functionSignature,
+            CodingKeys.spi.stringValue: .spi,
+            CodingKeys.snippet.stringValue: .snippet,
         ]
         
         static func == (lhs: SymbolGraph.Symbol.CodingKeys, rhs: SymbolGraph.Symbol.CodingKeys) -> Bool {
@@ -289,4 +258,49 @@ extension SymbolGraph.Symbol {
             nil
         }
     }
+}
+
+/// A type that allows for customizing the `userInfo` exposed by
+/// `Encoder` or `Decoder` during encoding/decoding.
+public protocol CustomizableCoder {
+    /// A modifyable version of `Encoder` and `Decoder`'s `userInfo`.
+    var userInfo: [CodingUserInfoKey: Any] { get nonmutating set }
+}
+
+extension JSONEncoder: CustomizableCoder { }
+
+extension JSONDecoder: CustomizableCoder { }
+
+public extension CustomizableCoder {
+    /// Register types conforming to ``Mixin`` so they can be included when encoding or
+    /// decoding symbols.
+    ///
+    /// If ``Symbol`` does not know the concrete type of a ``Mixin``, it cannot encode
+    /// or decode that type and thus skipps such entries. Note that ``Mixin``s that occur on symbols
+    /// in the default symbol graph format do not have to be registered!
+    func register(symbolMixins mixinTypes: Mixin.Type...) {
+        var registeredMixins = self.userInfo[.symbolMixinKey] as? [String: SymbolGraph.Symbol.CodingKeys] ?? [:]
+            
+        for type in mixinTypes {
+            registeredMixins[type.mixinKey] = type.symbolCodingKey
+        }
+        
+        self.userInfo[.symbolMixinKey] = registeredMixins
+    }
+}
+
+extension Encoder {
+    var registeredSymbolMixins: [String: SymbolGraph.Symbol.CodingKeys]? {
+        self.userInfo[.symbolMixinKey] as? [String: SymbolGraph.Symbol.CodingKeys]
+    }
+}
+
+extension Decoder {
+    var registeredSymbolMixins: [String: SymbolGraph.Symbol.CodingKeys]? {
+        self.userInfo[.symbolMixinKey] as? [String: SymbolGraph.Symbol.CodingKeys]
+    }
+}
+
+extension CodingUserInfoKey {
+    static let symbolMixinKey = CodingUserInfoKey(rawValue: "apple.symbolkit.symbolMixinKey")!
 }
