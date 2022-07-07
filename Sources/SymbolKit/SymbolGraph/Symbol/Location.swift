@@ -54,7 +54,7 @@ extension SymbolGraph.Symbol {
 }
 
 extension SymbolGraph.Symbol.Location {
-    /// ``Location`` ``Mixin``s are discarded silently if they
+    /// ``SymbolGraph/Symbol/Location`` ``Mixin``s are discarded silently if they
     /// fail to parse.
     public static func onDecodingError(_ error: Error) throws -> Mixin? {
         return nil

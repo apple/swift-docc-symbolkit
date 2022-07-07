@@ -16,6 +16,11 @@ extension SymbolGraph.Symbol {
      */
     public struct KindIdentifier: Equatable, Hashable, Codable, CaseIterable {
         private var rawValue: String
+        
+        /// Create a new ``KindIdentifier``.
+        ///
+        /// - Warning: Only use this initilaizer for defining a new kind. For initializing instances,
+        /// use ``init(identifier:)``!
         public init(rawValue: String) {
             self.rawValue = rawValue
         }
@@ -75,65 +80,51 @@ extension SymbolGraph.Symbol {
             rawValue
         }
         
-        public static let allCases: [Self] = [
-            .associatedtype,
-            .class,
-            .deinit,
-            .enum,
-            .case,
-            .func,
-            .operator,
-            .`init`,
-            .ivar,
-            .macro,
-            .method,
-            .property,
-            .protocol,
-            .snippet,
-            .snippetGroup,
-            .struct,
-            .subscript,
-            .typeMethod,
-            .typeProperty,
-            .typeSubscript,
-            .typealias,
-            .var,
-            .module,
-            .extension
+        public static var allCases: Dictionary<String, Self>.Values {
+            _allCases.values
+        }
+        
+        private static var _allCases: [String: Self] = [
+            Self.associatedtype.rawValue: .associatedtype,
+            Self.class.rawValue: .class,
+            Self.deinit.rawValue: .deinit,
+            Self.enum.rawValue: .enum,
+            Self.case.rawValue: .case,
+            Self.func.rawValue: .func,
+            Self.operator.rawValue: .operator,
+            Self.`init`.rawValue: .`init`,
+            Self.ivar.rawValue: .ivar,
+            Self.macro.rawValue: .macro,
+            Self.method.rawValue: .method,
+            Self.property.rawValue: .property,
+            Self.protocol.rawValue: .protocol,
+            Self.snippet.rawValue: .snippet,
+            Self.snippetGroup.rawValue: .snippetGroup,
+            Self.struct.rawValue: .struct,
+            Self.subscript.rawValue: .subscript,
+            Self.typeMethod.rawValue: .typeMethod,
+            Self.typeProperty.rawValue: .typeProperty,
+            Self.typeSubscript.rawValue: .typeSubscript,
+            Self.typealias.rawValue: .typealias,
+            Self.var.rawValue: .var,
+            Self.module.rawValue: .module,
+            Self.extension.rawValue: .extension,
         ]
+        
+        /// Register the identifier to assure it is parsed correctly in ``init(identifier:)`` and
+        /// that it is present in ``allCases``.
+        ///
+        /// - Note: Make sure to not call this function while other threads are initializing symbols.
+        public static func register(_ identifier: Self) {
+            _allCases[identifier.rawValue] = identifier
+        }
 
         /// Check the given identifier string against the list of known identifiers.
         ///
         /// - Parameter identifier: The identifier string to check.
         /// - Returns: The matching `KindIdentifier` case, or `nil` if there was no match.
         private static func lookupIdentifier(identifier: String) -> KindIdentifier? {
-            switch identifier {
-            case "associatedtype": return .associatedtype
-            case "class": return .class
-            case "deinit": return .deinit
-            case "enum": return .enum
-            case "enum.case": return .case
-            case "func": return .func
-            case "func.op": return .operator
-            case "init": return .`init`
-            case "ivar": return .ivar
-            case "macro": return .macro
-            case "method": return .method
-            case "property": return .property
-            case "protocol": return .protocol
-            case "snippet": return .snippet
-            case "snippetGroup": return .snippetGroup
-            case "struct": return .struct
-            case "subscript": return .subscript
-            case "type.method": return .typeMethod
-            case "type.property": return .typeProperty
-            case "type.subscript": return .typeSubscript
-            case "typealias": return .typealias
-            case "var": return .var
-            case "module": return .module
-            case "extension": return .extension
-            default: return nil
-            }
+            return _allCases[identifier]
         }
 
         /// Compares the given identifier against the known default symbol kinds, and returns whether it matches one.

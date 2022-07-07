@@ -275,7 +275,7 @@ public extension CustomizableCoder {
     /// Register types conforming to ``Mixin`` so they can be included when encoding or
     /// decoding symbols.
     ///
-    /// If ``Symbol`` does not know the concrete type of a ``Mixin``, it cannot encode
+    /// If ``SymbolGraph/Symbol`` does not know the concrete type of a ``Mixin``, it cannot encode
     /// or decode that type and thus skipps such entries. Note that ``Mixin``s that occur on symbols
     /// in the default symbol graph format do not have to be registered!
     func register(symbolMixins mixinTypes: Mixin.Type...) {
