@@ -38,6 +38,22 @@ class SymbolKindTests: XCTestCase {
         XCTAssertFalse(SymbolGraph.Symbol.KindIdentifier.isKnownIdentifier("swift.madeupapi"))
         kind = SymbolGraph.Symbol.KindIdentifier(identifier: "swift.madeupapi")
         XCTAssertEqual(kind.identifier, "swift.madeupapi")
+        
+        // Verify a registered, previously unknown identifier is recognized.
+        let custom = SymbolGraph.Symbol.KindIdentifier(rawValue: "custom")
+        SymbolGraph.Symbol.KindIdentifier.register(custom)
+        
+        XCTAssert(SymbolGraph.Symbol.KindIdentifier.isKnownIdentifier("swift.custom"))
+        kind = SymbolGraph.Symbol.KindIdentifier(identifier: "swift.custom")
+        XCTAssertEqual(kind, custom)
+        XCTAssertEqual(kind.identifier, "custom")
+
+        // Verify a registered, previously unknown identifier is recognized if
+        // used in a language-agnostic way.
+        XCTAssert(SymbolGraph.Symbol.KindIdentifier.isKnownIdentifier("custom"))
+        kind = SymbolGraph.Symbol.KindIdentifier(identifier: "custom")
+        XCTAssertEqual(kind, custom)
+        XCTAssertEqual(kind.identifier, "custom")
     }
 
     func testKindDecoding() throws {
