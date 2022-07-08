@@ -54,6 +54,17 @@ class SymbolKindTests: XCTestCase {
         kind = SymbolGraph.Symbol.KindIdentifier(identifier: "custom")
         XCTAssertEqual(kind, custom)
         XCTAssertEqual(kind.identifier, "custom")
+        
+        // Verify an unknown identifier is parsed correctly if it is
+        // registered with the deocder.
+        let otherCustom = SymbolGraph.Symbol.KindIdentifier(rawValue: "other.custom")
+        let decoder = JSONDecoder()
+        decoder.register(symbolKinds: otherCustom)
+        
+        XCTAssertFalse(SymbolGraph.Symbol.KindIdentifier.isKnownIdentifier("swift.other.custom"))
+        kind = try decoder.decode(SymbolGraph.Symbol.KindIdentifier.self, from: "\"swift.other.custom\"".data(using: .utf8)!)
+        XCTAssertEqual(kind, otherCustom)
+        XCTAssertEqual(kind.identifier, "other.custom")
     }
 
     func testKindDecoding() throws {

@@ -28,15 +28,15 @@ extension SymbolGraph {
 
         /// Extra information about a relationship that is not necessarily common to all relationships
         ///
-        /// - Warning: If you intend to encode/decode this symbol, make sure to register
-        /// any added ``Mixin``s that do not appear on symbols in the standard format
+        /// - Note: If you intend to encode/decode this relationship, make sure to register
+        /// any added ``Mixin``s that do not appear on relationships in the standard format
         /// on your coder using ``CustomizableCoder/register(relationshipMixins:)``.
         public var mixins: [String: Mixin] = [:]
         
         /// Extra information about a relationship that is not necessarily common to all relationships
         ///
-        /// - Warning: If you intend to encode/decode this symbol, make sure to register
-        /// any added ``Mixin``s that do not appear on symbols in the standard format
+        /// - Note: If you intend to encode/decode this relationship, make sure to register
+        /// any added ``Mixin``s that do not appear on relationships in the standard format
         /// on your coder using ``CustomizableCoder/register(relationshipMixins:)``.
         public subscript<M: Mixin>(mixin mixin: M.Type = M.self) -> M? {
             get {

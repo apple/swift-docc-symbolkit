@@ -103,14 +103,14 @@ extension SymbolGraph {
 
         /// Information about a symbol that is not necessarily common to all symbols.
         ///
-        /// - Warning: If you intend to encode/decode this symbol, make sure to register
+        /// - Note: If you intend to encode/decode this symbol, make sure to register
         /// any added ``Mixin``s that do not appear on symbols in the standard format
         /// on your coder using ``CustomizableCoder/register(symbolMixins:)``.
         public var mixins: [String: Mixin] = [:]
         
         /// Information about a symbol that is not necessarily common to all symbols.
         ///
-        /// - Warning: If you intend to encode/decode this symbol, make sure to register
+        /// - Note: If you intend to encode/decode this symbol, make sure to register
         /// any added ``Mixin``s that do not appear on symbols in the standard format
         /// on your coder using ``CustomizableCoder/register(symbolMixins:)``.
         public subscript<M: Mixin>(mixin mixin: M.Type = M.self) -> M? {

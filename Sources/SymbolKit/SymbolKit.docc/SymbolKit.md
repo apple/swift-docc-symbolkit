@@ -51,4 +51,7 @@ In addition, graph representations of data also present opportunities for visual
 
 - ``SymbolGraph``
 
+### Extending the Graph Structure
+- <doc:GraphFormatExtensions>
+
 <!-- Copyright (c) 2021-2022 Apple Inc and the Swift Project authors. All Rights Reserved. -->

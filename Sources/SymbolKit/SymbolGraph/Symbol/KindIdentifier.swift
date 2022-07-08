@@ -17,10 +17,10 @@ extension SymbolGraph.Symbol {
     public struct KindIdentifier: Equatable, Hashable, Codable, CaseIterable {
         private var rawValue: String
         
-        /// Create a new ``KindIdentifier``.
+        /// Create a new ``SymbolGraph/Symbol/KindIdentifier``.
         ///
-        /// - Warning: Only use this initilaizer for defining a new kind. For initializing instances,
-        /// use ``init(identifier:)``!
+        /// - Note: Only use this initilaizer for defining a new kind. For initializing instances manually,
+        /// copy the initial initializer. For extracting identifiers form raw strings, use ``init(identifier:)``.
         public init(rawValue: String) {
             self.rawValue = rawValue
         }
@@ -111,20 +111,27 @@ extension SymbolGraph.Symbol {
             Self.extension.rawValue: .extension,
         ]
         
-        /// Register the identifier to assure it is parsed correctly in ``init(identifier:)`` and
-        /// that it is present in ``allCases``.
+        /// Register custom ``SymbolGraph/Symbol/KindIdentifier``s so they can be parsed correctly and
+        /// appear in ``allCases``.
         ///
-        /// - Note: Make sure to not call this function while other threads are initializing symbols.
-        public static func register(_ identifier: Self) {
-            _allCases[identifier.rawValue] = identifier
+        /// If a type is not registered, language prefixes cannot be removed correctly.
+        ///
+        /// - Note: When working in an uncontrolled environment where other parts of your executable might be disturbed by your
+        /// modifications to the symbol graph structure, register identifiers on your coder instead using
+        /// ``CustomizableCoder/register(symbolKinds:)`` and maintain your own list of ``allCases``.
+        public static func register(_ identifiers: Self...) {
+            for identifier in identifiers {
+                _allCases[identifier.rawValue] = identifier
+            }
         }
 
         /// Check the given identifier string against the list of known identifiers.
         ///
         /// - Parameter identifier: The identifier string to check.
+        /// - Parameter extensionCases: A set of custom identifiers to be considered in this lookup.
         /// - Returns: The matching `KindIdentifier` case, or `nil` if there was no match.
-        private static func lookupIdentifier(identifier: String) -> KindIdentifier? {
-            return _allCases[identifier]
+        private static func lookupIdentifier(identifier: String, using extensionCases: [String: Self]? = nil) -> KindIdentifier? {
+            _allCases[identifier] ?? extensionCases?[identifier]
         }
 
         /// Compares the given identifier against the known default symbol kinds, and returns whether it matches one.
@@ -134,6 +141,9 @@ extension SymbolGraph.Symbol {
         ///
         /// - Parameter identifier: The identifier string to compare.
         /// - Returns: `true` if the given identifier matches a known symbol kind; otherwise `false`.
+        ///
+        /// - Note: This initializer does only recognize custom identifiers if they were registered previously using
+        /// ``register(_:)``.
         public static func isKnownIdentifier(_ identifier: String) -> Bool {
             var kind: KindIdentifier?
 
@@ -153,16 +163,23 @@ extension SymbolGraph.Symbol {
         /// will be treated the same as just `"func"`, and match `.func`.
         ///
         /// - Parameter identifier: The identifier string to parse.
+        ///
+        /// - Note: This initializer does only recognize custom identifiers if they were registered previously using
+        /// ``register(_:)``.
         public init(identifier: String) {
+            self.init(identifier: identifier, using: nil)
+        }
+        
+        private init(identifier: String, using extensionCases: [String: Self]?) {
             // Check if the identifier matches a symbol kind directly.
-            if let firstParse = Self.lookupIdentifier(identifier: identifier) {
+            if let firstParse = Self.lookupIdentifier(identifier: identifier, using: extensionCases) {
                 self = firstParse
             } else {
                 // For symbol graphs which include a language identifier with their symbol kinds
                 // (e.g. "swift.func" instead of just "func"), strip off the language prefix and
                 // try again.
                 let cleanIdentifier = KindIdentifier.cleanIdentifier(identifier)
-                if let secondParse = Self.lookupIdentifier(identifier: cleanIdentifier) {
+                if let secondParse = Self.lookupIdentifier(identifier: cleanIdentifier, using: extensionCases) {
                     self = secondParse
                 } else {
                     // If that doesn't help either, use the original identifier as a raw value.
@@ -173,7 +190,7 @@ extension SymbolGraph.Symbol {
 
         public init(from decoder: Decoder) throws {
             let identifier = try decoder.singleValueContainer().decode(String.self)
-            self = KindIdentifier(identifier: identifier)
+            self = KindIdentifier(identifier: identifier, using: decoder.registeredSymbolKindIdentifiers)
         }
 
         public func encode(to encoder: Encoder) throws {
@@ -197,4 +214,34 @@ extension SymbolGraph.Symbol {
             return identifier
         }
     }
+}
+
+public extension CustomizableCoder {
+    /// Register custom ``SymbolGraph/Symbol/KindIdentifier``s so they can be parsed correctly while
+    /// decoding symbols in an uncontrolled environment.
+    ///
+    /// If a type is not registered, language prefixes cannot be removed correctly.
+    ///
+    /// - Note: Registering custom identifiers on your decoder is only necessary when working in an uncontrolled environment where
+    /// other parts of your executable might be disturbed by your modifications to the symbol graph structure. If that is not the case, use
+    /// ``SymbolGraph/Symbol/KindIdentifier/register(_:)``.
+    func register(symbolKinds kindIdentifiers: SymbolGraph.Symbol.KindIdentifier...) {
+        var registeredIdentifiers = self.userInfo[.symbolKindIdentifierKey] as? [String: SymbolGraph.Symbol.KindIdentifier] ?? [:]
+            
+        for identifier in kindIdentifiers {
+            registeredIdentifiers[identifier.identifier] = identifier
+        }
+        
+        self.userInfo[.symbolKindIdentifierKey] = registeredIdentifiers
+    }
+}
+
+extension Decoder {
+    var registeredSymbolKindIdentifiers: [String: SymbolGraph.Symbol.KindIdentifier]? {
+        self.userInfo[.symbolKindIdentifierKey] as? [String: SymbolGraph.Symbol.KindIdentifier]
+    }
+}
+
+extension CodingUserInfoKey {
+    static let symbolKindIdentifierKey = CodingUserInfoKey(rawValue: "apple.symbolkit.symbolKindIdentifierKey")!
 }

@@ -13,6 +13,10 @@ import Foundation
 /**
  A protocol that allows extracted symbols to have extra data
  aside from the base ``SymbolGraph/Symbol``.
+ 
+ - Note: If you intend to encode/decode a custom ``Mixin`` as part of a relationship or symbol, make sure
+ to register its type to your encoder/decoder instance using ``CustomizableCoder/register(relationshipMixins:)``
+ or ``CustomizableCoder/register(symbolMixins:)``, respectively.
  */
 public protocol Mixin: Codable {
     /**
