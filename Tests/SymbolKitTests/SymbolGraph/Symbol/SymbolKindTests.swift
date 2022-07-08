@@ -66,6 +66,17 @@ class SymbolKindTests: XCTestCase {
         XCTAssertEqual(kind, otherCustom)
         XCTAssertEqual(kind.identifier, "other.custom")
     }
+    
+    func testAllCasesWithCustomIdentifiers() throws {
+        let registeredOnStaticContext = SymbolGraph.Symbol.KindIdentifier(rawValue: "custom.registeredOnStaticContext")
+        SymbolGraph.Symbol.KindIdentifier.register(registeredOnStaticContext)
+        
+        let registeredOnDecoder = SymbolGraph.Symbol.KindIdentifier(rawValue: "custom.registeredOnDecoder")
+        JSONDecoder().register(symbolKinds: registeredOnDecoder)
+        
+        XCTAssertTrue(SymbolGraph.Symbol.KindIdentifier.allCases.contains(registeredOnStaticContext))
+        XCTAssertFalse(SymbolGraph.Symbol.KindIdentifier.allCases.contains(registeredOnDecoder))
+    }
 
     func testKindDecoding() throws {
         var schemaData: Data
