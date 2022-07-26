@@ -32,12 +32,50 @@ class SymbolKindTests: XCTestCase {
         // Verify a bare language is not recognized.
         XCTAssertFalse(SymbolGraph.Symbol.KindIdentifier.isKnownIdentifier("swift"))
         kind = SymbolGraph.Symbol.KindIdentifier(identifier: "swift")
-        XCTAssertEqual(kind, .unknown)
+        XCTAssertEqual(kind.identifier, "swift")
 
         // Verify if nothing is recognized, identifier and name is still there.
         XCTAssertFalse(SymbolGraph.Symbol.KindIdentifier.isKnownIdentifier("swift.madeupapi"))
         kind = SymbolGraph.Symbol.KindIdentifier(identifier: "swift.madeupapi")
-        XCTAssertEqual(kind, .unknown)
+        XCTAssertEqual(kind.identifier, "swift.madeupapi")
+        
+        // Verify a registered, previously unknown identifier is recognized.
+        let custom = SymbolGraph.Symbol.KindIdentifier(rawValue: "custom")
+        SymbolGraph.Symbol.KindIdentifier.register(custom)
+        
+        XCTAssert(SymbolGraph.Symbol.KindIdentifier.isKnownIdentifier("swift.custom"))
+        kind = SymbolGraph.Symbol.KindIdentifier(identifier: "swift.custom")
+        XCTAssertEqual(kind, custom)
+        XCTAssertEqual(kind.identifier, "custom")
+
+        // Verify a registered, previously unknown identifier is recognized if
+        // used in a language-agnostic way.
+        XCTAssert(SymbolGraph.Symbol.KindIdentifier.isKnownIdentifier("custom"))
+        kind = SymbolGraph.Symbol.KindIdentifier(identifier: "custom")
+        XCTAssertEqual(kind, custom)
+        XCTAssertEqual(kind.identifier, "custom")
+        
+        // Verify an unknown identifier is parsed correctly if it is
+        // registered with the deocder.
+        let otherCustom = SymbolGraph.Symbol.KindIdentifier(rawValue: "other.custom")
+        let decoder = JSONDecoder()
+        decoder.register(symbolKinds: otherCustom)
+        
+        XCTAssertFalse(SymbolGraph.Symbol.KindIdentifier.isKnownIdentifier("swift.other.custom"))
+        kind = try decoder.decode(SymbolGraph.Symbol.KindIdentifier.self, from: "\"swift.other.custom\"".data(using: .utf8)!)
+        XCTAssertEqual(kind, otherCustom)
+        XCTAssertEqual(kind.identifier, "other.custom")
+    }
+    
+    func testAllCasesWithCustomIdentifiers() throws {
+        let registeredOnStaticContext = SymbolGraph.Symbol.KindIdentifier(rawValue: "custom.registeredOnStaticContext")
+        SymbolGraph.Symbol.KindIdentifier.register(registeredOnStaticContext)
+        
+        let registeredOnDecoder = SymbolGraph.Symbol.KindIdentifier(rawValue: "custom.registeredOnDecoder")
+        JSONDecoder().register(symbolKinds: registeredOnDecoder)
+        
+        XCTAssertTrue(SymbolGraph.Symbol.KindIdentifier.allCases.contains(registeredOnStaticContext))
+        XCTAssertFalse(SymbolGraph.Symbol.KindIdentifier.allCases.contains(registeredOnDecoder))
     }
 
     func testKindDecoding() throws {

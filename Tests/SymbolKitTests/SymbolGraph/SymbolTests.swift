@@ -259,6 +259,112 @@ class SymbolTests: XCTestCase {
         let mixinWithoutTypeKind = try JSONDecoder().decode(SymbolGraph.Symbol.Swift.Extension.self, from: inputGraphWithoutTypeKindInformation)
         XCTAssertNil(mixinWithoutTypeKind.typeKind)
     }
+    
+    /// Check that custom mixins can be decoded, manipulated, and encoded.
+    func testCustomMixinRoundTrip() throws {
+        let inputGraph = """
+{
+  "metadata" : {
+    "generator" : "manual",
+    "formatVersion" : {
+      "major" : 0,
+      "minor" : 5,
+      "patch" : 3
+    }
+  },
+  "module" : {
+    "name" : "ModuleName",
+    "platform" : {
+
+    }
+  },
+  "symbols": [
+    {
+      "accessLevel" : "public",
+      "kind" : {
+        "displayName" : "Instance Method",
+        "identifier" : "swift.method"
+      },
+      "pathComponents" : [
+        "ClassName",
+        "something()"
+      ],
+      "identifier" : {
+        "precise" : "precise-identifier",
+        "interfaceLanguage" : "swift"
+      },
+      "names" : {
+        "title" : "something()"
+      },
+      "declarationFragments" : [
+        {
+          "kind" : "keyword",
+          "spelling" : "func"
+        },
+        {
+          "kind" : "text",
+          "spelling" : " "
+        },
+        {
+          "kind" : "identifier",
+          "spelling" : "something"
+        },
+        {
+          "kind" : "text",
+          "spelling" : "() -> "
+        },
+        {
+          "kind" : "keyword",
+          "spelling" : "Any"
+        }
+      ],
+      "custom-Int": {
+        "value" : 1
+      }
+    }],
+  "relationships": [
+    {
+      "kind" : "memberOf",
+      "source" : "precise-source",
+      "target" : "precise-target",
+      "targetFallback" : "Swift.Int",
+      "custom-String": {
+        "value" : "relationship"
+      }
+    }]
+}
+""".data(using: .utf8)!
+        
+        // prepare encoder and decoder to deal with unknown mixins
+        let decoder = JSONDecoder()
+        decoder.register(symbolMixins: CustomMixin<Int>.self)
+        decoder.register(relationshipMixins: CustomMixin<String>.self)
+        
+        let encoder = JSONEncoder()
+        encoder.register(symbolMixins: CustomMixin<Int>.self, CustomMixin<String>.self)
+        encoder.register(relationshipMixins: CustomMixin<String>.self)
+
+        var graph = try decoder.decode(SymbolGraph.self, from: inputGraph)
+        
+        // check custom mixins are present
+        XCTAssertEqual("relationship", graph.relationships[0][mixin: CustomMixin<String>.self]?.value)
+        XCTAssertEqual(1, graph.symbols["precise-identifier"]![mixin: CustomMixin<Int>.self]?.value)
+        
+        // edit values + add new mixin of different type to symbol
+        graph.relationships[0][mixin: CustomMixin<String>.self]?.value = "first-relationship"
+        graph.symbols["precise-identifier"]![mixin: CustomMixin<Int>.self]?.value = 10
+        graph.symbols["precise-identifier"]![mixin: CustomMixin<String>.self] = CustomMixin<String>(value: "second-relationship")
+        
+        // check edited/new data is found in encoded string
+        let outputGraph = String(data: try encoder.encode(graph), encoding: .utf8)!
+        XCTAssertTrue(outputGraph.contains("first-relationship"))
+        XCTAssertTrue(outputGraph.contains("second-relationship"))
+        XCTAssertTrue(outputGraph.contains("10"))
+        
+        // assert encoding and decoding with unprepared coders does not throw
+        _ = try JSONDecoder().decode(SymbolGraph.self, from: inputGraph)
+        _ = try JSONEncoder().encode(graph)
+    }
 }
 
 // MARK: Test Data
@@ -326,4 +432,10 @@ private func encodedSymbol(withDocComment: (lines: [String], rangeStart: (line: 
       ]
     }
     """
+}
+
+private struct CustomMixin<T>: Mixin where T: Codable {
+    static var mixinKey: String { "custom-\(T.self)" }
+    
+    var value: T
 }

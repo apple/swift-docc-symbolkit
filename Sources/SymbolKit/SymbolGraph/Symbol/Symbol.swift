@@ -8,6 +8,8 @@
  See https://swift.org/CONTRIBUTORS.txt for Swift project authors
 */
 
+import Foundation
+
 extension SymbolGraph {
     /**
      A symbol from a module.
@@ -100,8 +102,26 @@ extension SymbolGraph {
         public var accessLevel: AccessControl
 
         /// Information about a symbol that is not necessarily common to all symbols.
+        ///
+        /// - Note: If you intend to encode/decode this symbol, make sure to register
+        /// any added ``Mixin``s that do not appear on symbols in the standard format
+        /// on your coder using ``register(mixins:to:onEncodingError:onDecodingError:)``.
         public var mixins: [String: Mixin] = [:]
-
+        
+        /// Information about a symbol that is not necessarily common to all symbols.
+        ///
+        /// - Note: If you intend to encode/decode this symbol, make sure to register
+        /// any added ``Mixin``s that do not appear on symbols in the standard format
+        /// on your coder using ``register(mixins:to:onEncodingError:onDecodingError:)``.
+        public subscript<M: Mixin>(mixin mixin: M.Type = M.self) -> M? {
+            get {
+                mixins[mixin.mixinKey] as? M
+            }
+            set {
+                mixins[mixin.mixinKey] = newValue
+            }
+        }
+        
         public init(identifier: Identifier, names: Names, pathComponents: [String], docComment: LineList?, accessLevel: AccessControl, kind: Kind, mixins: [String: Mixin]) {
             self.identifier = identifier
             self.names = names
@@ -110,42 +130,6 @@ extension SymbolGraph {
             self.accessLevel = accessLevel
             self.kind = kind
             self.mixins = mixins
-        }
-
-        enum CodingKeys: String, Hashable, CaseIterable, CodingKey {
-            // Base
-            case identifier
-            case kind
-            case pathComponents
-            case type
-            case names
-            case docComment
-            case accessLevel
-
-            // Mixins
-            case availability
-            case declarationFragments
-            case isReadOnly
-            case swiftExtension
-            case swiftGenerics
-            case location
-            case functionSignature
-            case spi
-            case snippet
-
-            static var mixinKeys: Set<CodingKeys> {
-                return [
-                    .availability,
-                    .declarationFragments,
-                    .isReadOnly,
-                    .swiftExtension,
-                    .swiftGenerics,
-                    .location,
-                    .functionSignature,
-                    .spi,
-                    .snippet,
-                ]
-            }
         }
 
         public init(from decoder: Decoder) throws {
@@ -157,13 +141,13 @@ extension SymbolGraph {
             names = try container.decode(Names.self, forKey: .names)
             docComment = try container.decodeIfPresent(LineList.self, forKey: .docComment)
             accessLevel = try container.decode(AccessControl.self, forKey: .accessLevel)
-            let leftoverMetadataKeys = Set(container.allKeys).intersection(CodingKeys.mixinKeys)
-            for key in leftoverMetadataKeys {
-                if let decoded = try decodeMetadataItemForKey(key, from: container) {
-                    mixins[key.stringValue] = decoded
-                } else {
-                    // do an AnyMetadataInfo
+            
+            for key in container.allKeys {
+                guard let info = CodingKeys.mixinCodingInfo[key.stringValue] ?? decoder.registeredSymbolMixins?[key.stringValue] else {
+                    continue
                 }
+                
+                mixins[key.stringValue] = try info.decode(container)
             }
         }
 
@@ -182,54 +166,11 @@ extension SymbolGraph {
             // Mixins
 
             for (key, mixin) in mixins {
-                let key = CodingKeys(rawValue: key)!
-                switch key {
-                case .availability:
-                    try container.encode(mixin as! Availability, forKey: key)
-                case .declarationFragments:
-                    try container.encode(mixin as! DeclarationFragments, forKey: key)
-                case .isReadOnly:
-                    try container.encode(mixin as! Mutability, forKey: key)
-                case .swiftExtension:
-                    try container.encode(mixin as! Swift.Extension, forKey: key)
-                case .swiftGenerics:
-                    try container.encode(mixin as! Swift.Generics, forKey: key)
-                case .functionSignature:
-                    try container.encode(mixin as! FunctionSignature, forKey: key)
-                case .spi:
-                    try container.encode(mixin as! SPI, forKey: key)
-                case .snippet:
-                    try container.encode(mixin as! Snippet, forKey: key)
-                case .location:
-                    try container.encode(mixin as! Location, forKey: key)
-                default:
-                    fatalError("Unknown mixin key \(key.rawValue)!")
+                guard let info = CodingKeys.mixinCodingInfo[key] ?? encoder.registeredSymbolMixins?[key] else {
+                    continue
                 }
-            }
-        }
-
-        func decodeMetadataItemForKey(_ key: CodingKeys, from container: KeyedDecodingContainer<CodingKeys>) throws -> Mixin? {
-            switch key.stringValue {
-            case Availability.mixinKey:
-                return try container.decode(Availability.self, forKey: key)
-            case Location.mixinKey:
-                return try? container.decode(Location.self, forKey: key)
-            case Mutability.mixinKey:
-                return try container.decode(Mutability.self, forKey: key)
-            case FunctionSignature.mixinKey:
-                return try container.decode(FunctionSignature.self, forKey: key)
-            case DeclarationFragments.mixinKey:
-                return try container.decode(DeclarationFragments.self, forKey: key)
-            case Swift.Extension.mixinKey:
-                return try container.decode(Swift.Extension.self, forKey: key)
-            case Swift.Generics.mixinKey:
-                return try container.decode(Swift.Generics.self, forKey: key)
-            case SPI.mixinKey:
-                return try container.decode(SPI.self, forKey: key)
-            case Snippet.mixinKey:
-                return try container.decode(Snippet.self, forKey: key)
-            default:
-                return nil
+                
+                try info.encode(mixin, &container)
             }
         }
 
@@ -240,4 +181,163 @@ extension SymbolGraph {
             return pathComponents.joined(separator: "/")
         }
     }
+}
+
+extension SymbolGraph.Symbol {
+    struct CodingKeys: CodingKey, Hashable {
+        let stringValue: String
+        
+        init?(stringValue: String) {
+            self = CodingKeys(rawValue: stringValue)
+        }
+        
+        init(rawValue: String) {
+            self.stringValue = rawValue
+        }
+        
+        // Base
+        static let identifier = CodingKeys(rawValue: "identifier")
+        static let kind = CodingKeys(rawValue: "kind")
+        static let pathComponents = CodingKeys(rawValue: "pathComponents")
+        static let type = CodingKeys(rawValue: "type")
+        static let names = CodingKeys(rawValue: "names")
+        static let docComment = CodingKeys(rawValue: "docComment")
+        static let accessLevel = CodingKeys(rawValue: "accessLevel")
+
+        // Mixins
+        static let availability = Availability.symbolCodingInfo
+        static let declarationFragments = DeclarationFragments.symbolCodingInfo
+        static let isReadOnly = Mutability.symbolCodingInfo
+        static let swiftExtension = Swift.Extension.symbolCodingInfo
+        static let swiftGenerics = Swift.Generics.symbolCodingInfo
+        static let location = Location.symbolCodingInfo
+        static let functionSignature = FunctionSignature.symbolCodingInfo
+        static let spi = SPI.symbolCodingInfo
+        static let snippet = Snippet.symbolCodingInfo
+        
+        static let mixinCodingInfo: [String: SymbolMixinCodingInfo] = [
+            CodingKeys.availability.codingKey.stringValue: Self.availability,
+            CodingKeys.declarationFragments.codingKey.stringValue: Self.declarationFragments,
+            CodingKeys.isReadOnly.codingKey.stringValue: Self.isReadOnly,
+            CodingKeys.swiftExtension.codingKey.stringValue: Self.swiftExtension,
+            CodingKeys.swiftGenerics.codingKey.stringValue: Self.swiftGenerics,
+            // malformed location data is discarded silently
+            CodingKeys.location.codingKey.stringValue: Self.location.with(decodingErrorHandler: { _ in nil }),
+            CodingKeys.functionSignature.codingKey.stringValue: Self.functionSignature,
+            CodingKeys.spi.codingKey.stringValue: Self.spi,
+            CodingKeys.snippet.codingKey.stringValue: Self.snippet,
+        ]
+        
+        static func == (lhs: SymbolGraph.Symbol.CodingKeys, rhs: SymbolGraph.Symbol.CodingKeys) -> Bool {
+            lhs.stringValue == rhs.stringValue
+        }
+        
+        func hash(into hasher: inout Hasher) {
+            stringValue.hash(into: &hasher)
+        }
+        
+        var intValue: Int? { nil }
+        
+        init?(intValue: Int) {
+            nil
+        }
+    }
+}
+
+extension SymbolGraph.Symbol {
+    /// Register types conforming to ``Mixin`` so they can be included when encoding or
+    /// decoding symbols.
+    ///
+    /// If ``SymbolGraph/Symbol`` does not know the concrete type of a ``Mixin``, it cannot encode
+    /// or decode that type and thus skipps such entries. Note that ``Mixin``s that occur on symbols
+    /// in the default symbol graph format do not have to be registered!
+    ///
+    /// - Parameter userInfo: A property which allows editing the `userInfo` member of the
+    /// `Encoder`/`Decoder` protocol.
+    /// - Parameter onEncodingError: Defines the behavior when an error occurs while encoding these types of ``Mixin``s.
+    /// You can log warnings and either re-throw or consume the error.
+    /// - Parameter onDecodingError: Defines the behavior when an error occurs while decoding these types of ``Mixin``s.
+    /// Next to logging warnings, the function allows for either re-throwing the error,
+    /// skipping the errornous entry, or providing a default value.
+    public static func register<M: Sequence>(mixins mixinTypes: M,
+                                             to userInfo: inout [CodingUserInfoKey: Any],
+                                             onEncodingError: ((_ error: Error, _ mixin: Mixin) throws -> Void)?,
+                                             onDecodingError: ((_ error: Error) throws -> Mixin?)?)
+    where M.Element == Mixin.Type {
+        var registeredMixins = userInfo[.symbolMixinKey] as? [String: SymbolMixinCodingInfo] ?? [:]
+            
+        for type in mixinTypes {
+            var info = type.symbolCodingInfo
+            if let encodingErrorHandler = onEncodingError {
+                info = info.with(encodingErrorHandler: encodingErrorHandler)
+            }
+            if let decodingErrorHandler = onDecodingError {
+                info = info.with(decodingErrorHandler: decodingErrorHandler)
+            }
+            
+            registeredMixins[type.mixinKey] = info
+        }
+        
+        userInfo[.symbolMixinKey] = registeredMixins
+    }
+}
+
+public extension JSONEncoder {
+    /// Register types conforming to ``Mixin`` so they can be included when encoding symbols.
+    ///
+    /// If ``SymbolGraph/Symbol`` does not know the concrete type of a ``Mixin``, it cannot encode
+    /// that type and thus skipps such entries. Note that ``Mixin``s that occur on symbols
+    /// in the default symbol graph format do not have to be registered!
+    ///
+    /// - Parameter onEncodingError: Defines the behavior when an error occurs while encoding these types of ``Mixin``s.
+    /// You can log warnings and either re-throw or consume the error.
+    /// - Parameter onDecodingError: Defines the behavior when an error occurs while decoding these types of ``Mixin``s.
+    /// Next to logging warnings, the function allows for either re-throwing the error,
+    /// skipping the errornous entry, or providing a default value.
+    func register(symbolMixins mixinTypes: Mixin.Type...,
+                  onEncodingError: ((_ error: Error, _ mixin: Mixin) throws -> Void)? = nil,
+                  onDecodingError: ((_ error: Error) throws -> Mixin?)? = nil) {
+        SymbolGraph.Symbol.register(mixins: mixinTypes,
+                                    to: &self.userInfo,
+                                    onEncodingError: onEncodingError,
+                                    onDecodingError: onDecodingError)
+    }
+}
+
+public extension JSONDecoder {
+    /// Register types conforming to ``Mixin`` so they can be included when decoding symbols.
+    ///
+    /// If ``SymbolGraph/Symbol`` does not know the concrete type of a ``Mixin``, it cannot decode
+    /// that type and thus skipps such entries. Note that ``Mixin``s that occur on symbols
+    /// in the default symbol graph format do not have to be registered!
+    ///
+    /// - Parameter onEncodingError: Defines the behavior when an error occurs while encoding these types of ``Mixin``s.
+    /// You can log warnings and either re-throw or consume the error.
+    /// - Parameter onDecodingError: Defines the behavior when an error occurs while decoding these types of ``Mixin``s.
+    /// Next to logging warnings, the function allows for either re-throwing the error,
+    /// skipping the errornous entry, or providing a default value.
+    func register(symbolMixins mixinTypes: Mixin.Type...,
+                  onEncodingError: ((_ error: Error, _ mixin: Mixin) throws -> Void)? = nil,
+                  onDecodingError: ((_ error: Error) throws -> Mixin?)? = nil) {
+        SymbolGraph.Symbol.register(mixins: mixinTypes,
+                                    to: &self.userInfo,
+                                    onEncodingError: onEncodingError,
+                                    onDecodingError: onDecodingError)
+    }
+}
+
+extension Encoder {
+    var registeredSymbolMixins: [String: SymbolMixinCodingInfo]? {
+        self.userInfo[.symbolMixinKey] as? [String: SymbolMixinCodingInfo]
+    }
+}
+
+extension Decoder {
+    var registeredSymbolMixins: [String: SymbolMixinCodingInfo]? {
+        self.userInfo[.symbolMixinKey] as? [String: SymbolMixinCodingInfo]
+    }
+}
+
+extension CodingUserInfoKey {
+    static let symbolMixinKey = CodingUserInfoKey(rawValue: "apple.symbolkit.symbolMixinKey")!
 }
