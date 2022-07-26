@@ -68,7 +68,7 @@ extension SymbolGraph.Symbol {
 
 You can now easily edit this information on an existing Symbol Graph.
 
-Before you can encode and decode this information, you need to register your custom Mixin on your encoder/decoder using ``SymbolGraph/Symbol/register(mixins:to:)`` / ``SymbolGraph/Relationship/register(mixins:to:)``, respectively. If you forget this step, you custom mixins will be ignored!
+Before you can encode and decode this information, you need to register your custom Mixin on your encoder/decoder using ``SymbolGraph/Symbol/register(mixins:to:onEncodingError:onDecodingError:)`` / ``SymbolGraph/Relationship/register(mixins:to:onEncodingError:onDecodingError:)``, respectively. If you forget this step, you custom mixins will be ignored!
 
 - Note: There exist handy shorcuts on Foundation's `JSONEncoder` and `JSONDecoder` for all the registration functions.
 
@@ -103,7 +103,7 @@ let outputData = try encoder.encode(graph)
 ### Defining Custom Properties
 
 - ``Mixin``
-- ``SymbolGraph/Symbol/register(mixins:to:)``
-- ``SymbolGraph/Relationship/register(mixins:to:)``
+- ``SymbolGraph/Symbol/register(mixins:to:onEncodingError:onDecodingError:)``
+- ``SymbolGraph/Relationship/register(mixins:to:onEncodingError:onDecodingError:)``
 
 <!-- Copyright (c) 2021-2022 Apple Inc and the Swift Project authors. All Rights Reserved. -->
