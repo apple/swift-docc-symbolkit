@@ -61,17 +61,7 @@ extension SymbolGraph {
                     continue
                 }
                 
-                guard let decode = info.codingKey.decoder else {
-                    continue
-                }
-                
-                do {
-                    let decoded = try decode(key, container)
-                    
-                    mixins[info.codingKey.stringValue] = decoded
-                } catch {
-                    mixins[info.codingKey.stringValue] = try info.onDecodingError(error)
-                }
+                mixins[info.codingKey.stringValue] = try info.decode(container)
             }
         }
 
@@ -92,15 +82,7 @@ extension SymbolGraph {
                     continue
                 }
                 
-                guard let encode = info.codingKey.encoder else {
-                    continue
-                }
-                
-                do {
-                    try encode(info.codingKey, mixin, &container)
-                } catch {
-                    try info.onEncodingError(error, mixin)
-                }
+                try info.encode(mixin, &container)
             }
         }
 
@@ -116,20 +98,13 @@ extension SymbolGraph {
 extension SymbolGraph.Relationship {
     struct CodingKeys: CodingKey, Hashable {
         let stringValue: String
-        let encoder: ((Self, Mixin, inout KeyedEncodingContainer<CodingKeys>) throws -> ())?
-        let decoder: ((Self, KeyedDecodingContainer<CodingKeys>) throws -> Mixin?)?
-        
         
         init?(stringValue: String) {
             self = CodingKeys(rawValue: stringValue)
         }
         
-        init(rawValue: String,
-             encoder: ((Self, Mixin, inout KeyedEncodingContainer<CodingKeys>) throws -> ())? = nil,
-             decoder: ((Self, KeyedDecodingContainer<CodingKeys>) throws -> Mixin?)? = nil) {
+        init(rawValue: String) {
             self.stringValue = rawValue
-            self.encoder = encoder
-            self.decoder = decoder
         }
         
         // Base
@@ -139,12 +114,12 @@ extension SymbolGraph.Relationship {
         static let targetFallback = CodingKeys(rawValue: "targetFallback")
 
         // Mixins
-        static let swiftConstraints = Swift.GenericConstraints.relationshipCodingKey
-        static let sourceOrigin = SourceOrigin.relationshipCodingKey
+        static let swiftConstraints = Swift.GenericConstraints.relationshipCodingInfo
+        static let sourceOrigin = SourceOrigin.relationshipCodingInfo
         
         static let mixinKeys: [String: RelationshipMixinCodingInfo] = [
-            CodingKeys.swiftConstraints.stringValue: .init(codingKey: .swiftConstraints),
-            CodingKeys.sourceOrigin.stringValue: .init(codingKey: .sourceOrigin),
+            CodingKeys.swiftConstraints.codingKey.stringValue: Self.swiftConstraints,
+            CodingKeys.sourceOrigin.codingKey.stringValue: Self.sourceOrigin,
         ]
         
         static func == (lhs: SymbolGraph.Relationship.CodingKeys, rhs: SymbolGraph.Relationship.CodingKeys) -> Bool {
@@ -180,14 +155,20 @@ extension SymbolGraph.Relationship {
     /// skipping the errornous entry, or providing a default value.
     public static func register<M: Sequence>(mixins mixinTypes: M,
                                              to userInfo: inout [CodingUserInfoKey: Any],
-                                             onEncodingError: @escaping (_ error: Error, _ mixin: Mixin) throws -> Void  = { error, _ in throw error },
-                                             onDecodingError: @escaping (_ error: Error) throws -> Mixin? = { error in throw error }) where M.Element == Mixin.Type {
+                                             onEncodingError: ((_ error: Error, _ mixin: Mixin) throws -> Void)?,
+                                             onDecodingError: ((_ error: Error) throws -> Mixin?)?) where M.Element == Mixin.Type {
         var registeredMixins = userInfo[.relationshipMixinKey] as? [String: RelationshipMixinCodingInfo] ?? [:]
             
         for type in mixinTypes {
-            registeredMixins[type.mixinKey] = RelationshipMixinCodingInfo(codingKey: type.relationshipCodingKey,
-                                                                          onEncodingError: onEncodingError,
-                                                                          onDecodingError: onDecodingError)
+            var info = type.relationshipCodingInfo
+            if let encodingErrorHandler = onEncodingError {
+                info = info.with(encodingErrorHandler: encodingErrorHandler)
+            }
+            if let decodingErrorHandler = onDecodingError {
+                info = info.with(decodingErrorHandler: decodingErrorHandler)
+            }
+            
+            registeredMixins[type.mixinKey] = info
         }
         
         userInfo[.relationshipMixinKey] = registeredMixins
@@ -207,8 +188,8 @@ public extension JSONEncoder {
     /// Next to logging warnings, the function allows for either re-throwing the error,
     /// skipping the errornous entry, or providing a default value.
     func register(relationshipMixins mixinTypes: Mixin.Type...,
-                  onEncodingError: @escaping (_ error: Error, _ mixin: Mixin) throws -> Void  = { error, _ in throw error },
-                  onDecodingError: @escaping (_ error: Error) throws -> Mixin? = { error in throw error }) {
+                  onEncodingError: ((_ error: Error, _ mixin: Mixin) throws -> Void)? = nil,
+                  onDecodingError: ((_ error: Error) throws -> Mixin?)? = nil) {
         SymbolGraph.Relationship.register(mixins: mixinTypes,
                                           to: &self.userInfo,
                                           onEncodingError: onEncodingError,
@@ -229,8 +210,8 @@ public extension JSONDecoder {
     /// Next to logging warnings, the function allows for either re-throwing the error,
     /// skipping the errornous entry, or providing a default value.
     func register(relationshipMixins mixinTypes: Mixin.Type...,
-                  onEncodingError: @escaping (_ error: Error, _ mixin: Mixin) throws -> Void  = { error, _ in throw error },
-                  onDecodingError: @escaping (_ error: Error) throws -> Mixin? = { error in throw error }) {
+                  onEncodingError: ((_ error: Error, _ mixin: Mixin) throws -> Void)? = nil,
+                  onDecodingError: ((_ error: Error) throws -> Mixin?)? = nil) {
         SymbolGraph.Relationship.register(mixins: mixinTypes,
                                           to: &self.userInfo,
                                           onEncodingError: onEncodingError,
@@ -253,8 +234,6 @@ extension Decoder {
 extension CodingUserInfoKey {
     static let relationshipMixinKey = CodingUserInfoKey(rawValue: "apple.symbolkit.relationshipMixinKey")!
 }
-
-typealias RelationshipMixinCodingInfo = MixinCodingInformation<SymbolGraph.Relationship.CodingKeys>
 
 // MARK: Relationship+Hashable
 

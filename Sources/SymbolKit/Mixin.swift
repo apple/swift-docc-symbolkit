@@ -28,25 +28,63 @@ public protocol Mixin: Codable {
     static var mixinKey: String { get }
 }
 
-// This extension provides coding keys for any instance of Mixin. These
-// coding keys wrap the encoding and decoding logic for the respective
+// This extension provides coding information for any instance of Mixin. These
+// coding infos wrap the encoding and decoding logic for the respective
 // instances in a type-erased way. Thus, the concrete instance type of Mixins
 // does not need to be known by the encoding/decoding logic in Symbol and
 // Relationship.
 extension Mixin {
-    static var symbolCodingKey: SymbolGraph.Symbol.CodingKeys {
-        SymbolGraph.Symbol.CodingKeys(rawValue: Self.mixinKey, encoder: { key, mixin, container in
+    static var symbolCodingInfo: SymbolMixinCodingInfo {
+        let key = SymbolGraph.Symbol.CodingKeys(rawValue: Self.mixinKey)
+        return MixinCodingInformation(codingKey: key,
+                               encode: { mixin, container in
             try container.encode(mixin as! Self, forKey: key)
-        }, decoder: { key, container in
+        },
+                               decode: { container in
             try container.decode(Self.self, forKey: key)
         })
     }
     
-    static var relationshipCodingKey: SymbolGraph.Relationship.CodingKeys {
-        SymbolGraph.Relationship.CodingKeys(rawValue: Self.mixinKey, encoder: { key, mixin, container in
+    static var relationshipCodingInfo: RelationshipMixinCodingInfo {
+        let key = SymbolGraph.Relationship.CodingKeys(rawValue: Self.mixinKey)
+        return MixinCodingInformation(codingKey: key,
+                               encode: { mixin, container in
             try container.encode(mixin as! Self, forKey: key)
-        }, decoder: { key, container in
+        },
+                               decode: { container in
             try container.decode(Self.self, forKey: key)
+        })
+    }
+}
+
+typealias SymbolMixinCodingInfo = MixinCodingInformation<SymbolGraph.Symbol.CodingKeys>
+
+typealias RelationshipMixinCodingInfo = MixinCodingInformation<SymbolGraph.Relationship.CodingKeys>
+
+struct MixinCodingInformation<Key: CodingKey> {
+    let codingKey: Key
+    let encode: (Mixin, inout KeyedEncodingContainer<Key>) throws -> Void
+    let decode: (KeyedDecodingContainer<Key>) throws -> Mixin?
+}
+
+extension MixinCodingInformation {
+    func with(encodingErrorHandler: @escaping (_ error: Error, _ mixin: Mixin) throws -> Void) -> Self {
+        MixinCodingInformation(codingKey: self.codingKey, encode: { mixin, container in
+            do {
+                try self.encode(mixin, &container)
+            } catch {
+                try encodingErrorHandler(error, mixin)
+            }
+        }, decode: self.decode)
+    }
+    
+    func with(decodingErrorHandler: @escaping (_ error: Error) throws -> Mixin?) -> Self {
+        MixinCodingInformation(codingKey: self.codingKey, encode: self.encode, decode: { container in
+            do {
+                return try self.decode(container)
+            } catch {
+                return try decodingErrorHandler(error)
+            }
         })
     }
 }

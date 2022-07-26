@@ -68,15 +68,11 @@ extension UnifiedSymbolGraph.Symbol: Encodable {
 
             // This is copied from SymbolGraph.Symbol's encoding method
             for (key, mixin) in mixins {
-                guard let key = SymbolGraph.Symbol.CodingKeys(stringValue: key) else {
+                guard let info = SymbolGraph.Symbol.CodingKeys.mixinCodingInfo[key] ?? encoder.registeredSymbolMixins?[key] else {
                     continue
                 }
                 
-                guard let encode = key.encoder else {
-                    continue
-                }
-                
-                try encode(key, mixin, &container)
+                try info.encode(mixin, &container)
             }
         }
     }

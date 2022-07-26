@@ -143,21 +143,11 @@ extension SymbolGraph {
             accessLevel = try container.decode(AccessControl.self, forKey: .accessLevel)
             
             for key in container.allKeys {
-                guard let info = CodingKeys.mixinKeys[key.stringValue] ?? decoder.registeredSymbolMixins?[key.stringValue] else {
+                guard let info = CodingKeys.mixinCodingInfo[key.stringValue] ?? decoder.registeredSymbolMixins?[key.stringValue] else {
                     continue
                 }
                 
-                guard let decode = info.codingKey.decoder else {
-                    continue
-                }
-                
-                do {
-                    let decoded = try decode(info.codingKey, container)
-                    
-                    mixins[key.stringValue] = decoded
-                } catch {
-                    mixins[key.stringValue] = try info.onDecodingError(error)
-                }
+                mixins[key.stringValue] = try info.decode(container)
             }
         }
 
@@ -176,19 +166,11 @@ extension SymbolGraph {
             // Mixins
 
             for (key, mixin) in mixins {
-                guard let info = CodingKeys.mixinKeys[key] ?? encoder.registeredSymbolMixins?[key] else {
+                guard let info = CodingKeys.mixinCodingInfo[key] ?? encoder.registeredSymbolMixins?[key] else {
                     continue
                 }
                 
-                guard let encode = info.codingKey.encoder else {
-                    continue
-                }
-                
-                do {
-                    try encode(info.codingKey, mixin, &container)
-                } catch {
-                    try info.onEncodingError(error, mixin)
-                }
+                try info.encode(mixin, &container)
             }
         }
 
@@ -204,20 +186,13 @@ extension SymbolGraph {
 extension SymbolGraph.Symbol {
     struct CodingKeys: CodingKey, Hashable {
         let stringValue: String
-        let encoder: ((Self, Mixin, inout KeyedEncodingContainer<CodingKeys>) throws -> ())?
-        let decoder: ((Self, KeyedDecodingContainer<CodingKeys>) throws -> Mixin?)?
-        
         
         init?(stringValue: String) {
             self = CodingKeys(rawValue: stringValue)
         }
         
-        init(rawValue: String,
-             encoder: ((Self, Mixin, inout KeyedEncodingContainer<CodingKeys>) throws -> ())? = nil,
-             decoder: ((Self, KeyedDecodingContainer<CodingKeys>) throws -> Mixin?)? = nil) {
+        init(rawValue: String) {
             self.stringValue = rawValue
-            self.encoder = encoder
-            self.decoder = decoder
         }
         
         // Base
@@ -230,27 +205,27 @@ extension SymbolGraph.Symbol {
         static let accessLevel = CodingKeys(rawValue: "accessLevel")
 
         // Mixins
-        static let availability = Availability.symbolCodingKey
-        static let declarationFragments = DeclarationFragments.symbolCodingKey
-        static let isReadOnly = Mutability.symbolCodingKey
-        static let swiftExtension = Swift.Extension.symbolCodingKey
-        static let swiftGenerics = Swift.Generics.symbolCodingKey
-        static let location = Location.symbolCodingKey
-        static let functionSignature = FunctionSignature.symbolCodingKey
-        static let spi = SPI.symbolCodingKey
-        static let snippet = Snippet.symbolCodingKey
+        static let availability = Availability.symbolCodingInfo
+        static let declarationFragments = DeclarationFragments.symbolCodingInfo
+        static let isReadOnly = Mutability.symbolCodingInfo
+        static let swiftExtension = Swift.Extension.symbolCodingInfo
+        static let swiftGenerics = Swift.Generics.symbolCodingInfo
+        static let location = Location.symbolCodingInfo
+        static let functionSignature = FunctionSignature.symbolCodingInfo
+        static let spi = SPI.symbolCodingInfo
+        static let snippet = Snippet.symbolCodingInfo
         
-        static let mixinKeys: [String: SymbolMixinCodingInfo] = [
-            CodingKeys.availability.stringValue: .init(codingKey: .availability),
-            CodingKeys.declarationFragments.stringValue: .init(codingKey: .declarationFragments),
-            CodingKeys.isReadOnly.stringValue: .init(codingKey:.isReadOnly),
-            CodingKeys.swiftExtension.stringValue: .init(codingKey:.swiftExtension),
-            CodingKeys.swiftGenerics.stringValue: .init(codingKey:.swiftGenerics),
+        static let mixinCodingInfo: [String: SymbolMixinCodingInfo] = [
+            CodingKeys.availability.codingKey.stringValue: Self.availability,
+            CodingKeys.declarationFragments.codingKey.stringValue: Self.declarationFragments,
+            CodingKeys.isReadOnly.codingKey.stringValue: Self.isReadOnly,
+            CodingKeys.swiftExtension.codingKey.stringValue: Self.swiftExtension,
+            CodingKeys.swiftGenerics.codingKey.stringValue: Self.swiftGenerics,
             // malformed location data is discarded silently
-            CodingKeys.location.stringValue: .init(codingKey:.location, onDecodingError: { _ in return nil }),
-            CodingKeys.functionSignature.stringValue: .init(codingKey:.functionSignature),
-            CodingKeys.spi.stringValue: .init(codingKey:.spi),
-            CodingKeys.snippet.stringValue: .init(codingKey:.snippet),
+            CodingKeys.location.codingKey.stringValue: Self.location.with(decodingErrorHandler: { _ in nil }),
+            CodingKeys.functionSignature.codingKey.stringValue: Self.functionSignature,
+            CodingKeys.spi.codingKey.stringValue: Self.spi,
+            CodingKeys.snippet.codingKey.stringValue: Self.snippet,
         ]
         
         static func == (lhs: SymbolGraph.Symbol.CodingKeys, rhs: SymbolGraph.Symbol.CodingKeys) -> Bool {
@@ -286,15 +261,21 @@ extension SymbolGraph.Symbol {
     /// skipping the errornous entry, or providing a default value.
     public static func register<M: Sequence>(mixins mixinTypes: M,
                                              to userInfo: inout [CodingUserInfoKey: Any],
-                                             onEncodingError: @escaping (_ error: Error, _ mixin: Mixin) throws -> Void  = { error, _ in throw error },
-                                             onDecodingError: @escaping (_ error: Error) throws -> Mixin? = { error in throw error })
+                                             onEncodingError: ((_ error: Error, _ mixin: Mixin) throws -> Void)?,
+                                             onDecodingError: ((_ error: Error) throws -> Mixin?)?)
     where M.Element == Mixin.Type {
         var registeredMixins = userInfo[.symbolMixinKey] as? [String: SymbolMixinCodingInfo] ?? [:]
             
         for type in mixinTypes {
-            registeredMixins[type.mixinKey] = SymbolMixinCodingInfo(codingKey: type.symbolCodingKey,
-                                                                    onEncodingError: onEncodingError,
-                                                                    onDecodingError: onDecodingError)
+            var info = type.symbolCodingInfo
+            if let encodingErrorHandler = onEncodingError {
+                info = info.with(encodingErrorHandler: encodingErrorHandler)
+            }
+            if let decodingErrorHandler = onDecodingError {
+                info = info.with(decodingErrorHandler: decodingErrorHandler)
+            }
+            
+            registeredMixins[type.mixinKey] = info
         }
         
         userInfo[.symbolMixinKey] = registeredMixins
@@ -314,8 +295,8 @@ public extension JSONEncoder {
     /// Next to logging warnings, the function allows for either re-throwing the error,
     /// skipping the errornous entry, or providing a default value.
     func register(symbolMixins mixinTypes: Mixin.Type...,
-                  onEncodingError: @escaping (_ error: Error, _ mixin: Mixin) throws -> Void  = { error, _ in throw error },
-                  onDecodingError: @escaping (_ error: Error) throws -> Mixin? = { error in throw error }) {
+                  onEncodingError: ((_ error: Error, _ mixin: Mixin) throws -> Void)? = nil,
+                  onDecodingError: ((_ error: Error) throws -> Mixin?)? = nil) {
         SymbolGraph.Symbol.register(mixins: mixinTypes,
                                     to: &self.userInfo,
                                     onEncodingError: onEncodingError,
@@ -336,8 +317,8 @@ public extension JSONDecoder {
     /// Next to logging warnings, the function allows for either re-throwing the error,
     /// skipping the errornous entry, or providing a default value.
     func register(symbolMixins mixinTypes: Mixin.Type...,
-                  onEncodingError: @escaping (_ error: Error, _ mixin: Mixin) throws -> Void  = { error, _ in throw error },
-                  onDecodingError: @escaping (_ error: Error) throws -> Mixin? = { error in throw error }) {
+                  onEncodingError: ((_ error: Error, _ mixin: Mixin) throws -> Void)? = nil,
+                  onDecodingError: ((_ error: Error) throws -> Mixin?)? = nil) {
         SymbolGraph.Symbol.register(mixins: mixinTypes,
                                     to: &self.userInfo,
                                     onEncodingError: onEncodingError,
@@ -359,20 +340,4 @@ extension Decoder {
 
 extension CodingUserInfoKey {
     static let symbolMixinKey = CodingUserInfoKey(rawValue: "apple.symbolkit.symbolMixinKey")!
-}
-
-typealias SymbolMixinCodingInfo = MixinCodingInformation<SymbolGraph.Symbol.CodingKeys>
-
-struct MixinCodingInformation<Key: CodingKey> {
-    internal init(codingKey: Key,
-                  onEncodingError: @escaping (Error, Mixin) throws -> Void = { error, _ in throw error },
-                  onDecodingError: @escaping (Error) throws -> Mixin? = { error in throw error }) {
-        self.codingKey = codingKey
-        self.onEncodingError = onEncodingError
-        self.onDecodingError = onDecodingError
-    }
-    
-    let codingKey: Key
-    let onEncodingError: (_ error: Error, _ mixin: Mixin) throws -> Void
-    let onDecodingError: (_ error: Error) throws -> Mixin?
 }
