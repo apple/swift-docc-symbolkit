@@ -15,8 +15,8 @@ import Foundation
  aside from the base ``SymbolGraph/Symbol``.
  
  - Note: If you intend to encode/decode a custom ``Mixin`` as part of a relationship or symbol, make sure
- to register its type to your encoder/decoder instance using ``CustomizableCoder/register(relationshipMixins:)``
- or ``CustomizableCoder/register(symbolMixins:)``, respectively.
+ to register its type to your encoder/decoder instance using ``SymbolGraph/Relationship/register(mixins:to:)``
+ or ``SymbolGraph/Symbol/register(mixins:to:)``, respectively.
  */
 public protocol Mixin: Codable {
     /**
@@ -31,7 +31,7 @@ public protocol Mixin: Codable {
     /// Next to logging warnings, the function allows for either re-throwing the error,
     /// skipping the errornous entry, or providing a default value.
     static func onDecodingError(_ error: Error) throws -> Mixin?
-    
+
     /// Defines the behavior when an error occurs while encoding this type of ``Mixin``.
     ///
     /// You can either re-throw or consume the error.

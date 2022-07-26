@@ -105,14 +105,14 @@ extension SymbolGraph {
         ///
         /// - Note: If you intend to encode/decode this symbol, make sure to register
         /// any added ``Mixin``s that do not appear on symbols in the standard format
-        /// on your coder using ``CustomizableCoder/register(symbolMixins:)``.
+        /// on your coder using ``register(mixins:to:)``.
         public var mixins: [String: Mixin] = [:]
         
         /// Information about a symbol that is not necessarily common to all symbols.
         ///
         /// - Note: If you intend to encode/decode this symbol, make sure to register
         /// any added ``Mixin``s that do not appear on symbols in the standard format
-        /// on your coder using ``CustomizableCoder/register(symbolMixins:)``.
+        /// on your coder using ``register(mixins:to:)``.
         public subscript<M: Mixin>(mixin mixin: M.Type = M.self) -> M? {
             get {
                 mixins[mixin.mixinKey] as? M
@@ -260,32 +260,47 @@ extension SymbolGraph.Symbol {
     }
 }
 
-/// A type that allows for customizing the `userInfo` exposed by
-/// `Encoder` or `Decoder` during encoding/decoding.
-public protocol CustomizableCoder {
-    /// A modifyable version of `Encoder` and `Decoder`'s `userInfo`.
-    var userInfo: [CodingUserInfoKey: Any] { get nonmutating set }
-}
-
-extension JSONEncoder: CustomizableCoder { }
-
-extension JSONDecoder: CustomizableCoder { }
-
-public extension CustomizableCoder {
+extension SymbolGraph.Symbol {
     /// Register types conforming to ``Mixin`` so they can be included when encoding or
     /// decoding symbols.
     ///
     /// If ``SymbolGraph/Symbol`` does not know the concrete type of a ``Mixin``, it cannot encode
     /// or decode that type and thus skipps such entries. Note that ``Mixin``s that occur on symbols
     /// in the default symbol graph format do not have to be registered!
-    func register(symbolMixins mixinTypes: Mixin.Type...) {
-        var registeredMixins = self.userInfo[.symbolMixinKey] as? [String: SymbolGraph.Symbol.CodingKeys] ?? [:]
+    ///
+    /// - Parameter userInfo: A property which allows editing the `userInfo` member of the
+    /// `Encoder`/`Decoder` protocol.
+    public static func register<M: Sequence>(mixins mixinTypes: M,
+                                             to userInfo: inout [CodingUserInfoKey: Any]) where M.Element == Mixin.Type {
+        var registeredMixins = userInfo[.symbolMixinKey] as? [String: SymbolGraph.Symbol.CodingKeys] ?? [:]
             
         for type in mixinTypes {
             registeredMixins[type.mixinKey] = type.symbolCodingKey
         }
         
-        self.userInfo[.symbolMixinKey] = registeredMixins
+        userInfo[.symbolMixinKey] = registeredMixins
+    }
+}
+
+public extension JSONEncoder {
+    /// Register types conforming to ``Mixin`` so they can be included when encoding symbols.
+    ///
+    /// If ``SymbolGraph/Symbol`` does not know the concrete type of a ``Mixin``, it cannot encode
+    /// that type and thus skipps such entries. Note that ``Mixin``s that occur on symbols
+    /// in the default symbol graph format do not have to be registered!
+    func register(symbolMixins mixinTypes: Mixin.Type...) {
+        SymbolGraph.Symbol.register(mixins: mixinTypes, to: &self.userInfo)
+    }
+}
+
+public extension JSONDecoder {
+    /// Register types conforming to ``Mixin`` so they can be included when decoding symbols.
+    ///
+    /// If ``SymbolGraph/Symbol`` does not know the concrete type of a ``Mixin``, it cannot decode
+    /// that type and thus skipps such entries. Note that ``Mixin``s that occur on symbols
+    /// in the default symbol graph format do not have to be registered!
+    func register(symbolMixins mixinTypes: Mixin.Type...) {
+        SymbolGraph.Symbol.register(mixins: mixinTypes, to: &self.userInfo)
     }
 }
 

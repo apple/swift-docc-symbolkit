@@ -118,7 +118,7 @@ extension SymbolGraph.Symbol {
         ///
         /// - Note: When working in an uncontrolled environment where other parts of your executable might be disturbed by your
         /// modifications to the symbol graph structure, register identifiers on your coder instead using
-        /// ``CustomizableCoder/register(symbolKinds:)`` and maintain your own list of ``allCases``.
+        /// ``register(_:to:)`` and maintain your own list of ``allCases``.
         public static func register(_ identifiers: Self...) {
             for identifier in identifiers {
                 _allCases[identifier.rawValue] = identifier
@@ -216,7 +216,7 @@ extension SymbolGraph.Symbol {
     }
 }
 
-public extension CustomizableCoder {
+extension SymbolGraph.Symbol.KindIdentifier {
     /// Register custom ``SymbolGraph/Symbol/KindIdentifier``s so they can be parsed correctly while
     /// decoding symbols in an uncontrolled environment.
     ///
@@ -225,14 +225,32 @@ public extension CustomizableCoder {
     /// - Note: Registering custom identifiers on your decoder is only necessary when working in an uncontrolled environment where
     /// other parts of your executable might be disturbed by your modifications to the symbol graph structure. If that is not the case, use
     /// ``SymbolGraph/Symbol/KindIdentifier/register(_:)``.
-    func register(symbolKinds kindIdentifiers: SymbolGraph.Symbol.KindIdentifier...) {
-        var registeredIdentifiers = self.userInfo[.symbolKindIdentifierKey] as? [String: SymbolGraph.Symbol.KindIdentifier] ?? [:]
+    ///
+    /// - Parameter userInfo: A property which allows editing the `userInfo` member of the
+    /// `Decoder` protocol.
+    public static func register<I: Sequence>(_ identifiers: I,
+                                             to userInfo: inout [CodingUserInfoKey: Any]) where I.Element == Self {
+        var registeredIdentifiers = userInfo[.symbolKindIdentifierKey] as? [String: SymbolGraph.Symbol.KindIdentifier] ?? [:]
             
-        for identifier in kindIdentifiers {
+        for identifier in identifiers {
             registeredIdentifiers[identifier.identifier] = identifier
         }
         
-        self.userInfo[.symbolKindIdentifierKey] = registeredIdentifiers
+        userInfo[.symbolKindIdentifierKey] = registeredIdentifiers
+    }
+}
+
+public extension JSONDecoder {
+    /// Register custom ``SymbolGraph/Symbol/KindIdentifier``s so they can be parsed correctly while
+    /// decoding symbols in an uncontrolled environment.
+    ///
+    /// If a type is not registered, language prefixes cannot be removed correctly.
+    ///
+    /// - Note: Registering custom identifiers on your decoder is only necessary when working in an uncontrolled environment where
+    /// other parts of your executable might be disturbed by your modifications to the symbol graph structure. If that is not the case, use
+    /// ``SymbolGraph/Symbol/KindIdentifier/register(_:)``.
+    func register(symbolKinds identifiers: SymbolGraph.Symbol.KindIdentifier...) {
+        SymbolGraph.Symbol.KindIdentifier.register(identifiers, to: &self.userInfo)
     }
 }
 

@@ -8,6 +8,8 @@
  See https://swift.org/CONTRIBUTORS.txt for Swift project authors
 */
 
+import Foundation
+
 extension SymbolGraph {
     /**
      A relationship between two `Symbol`s; a directed edge in a graph.
@@ -30,14 +32,14 @@ extension SymbolGraph {
         ///
         /// - Note: If you intend to encode/decode this relationship, make sure to register
         /// any added ``Mixin``s that do not appear on relationships in the standard format
-        /// on your coder using ``CustomizableCoder/register(relationshipMixins:)``.
+        /// on your coder using ``register(mixins:to:)``.
         public var mixins: [String: Mixin] = [:]
         
         /// Extra information about a relationship that is not necessarily common to all relationships
         ///
         /// - Note: If you intend to encode/decode this relationship, make sure to register
         /// any added ``Mixin``s that do not appear on relationships in the standard format
-        /// on your coder using ``CustomizableCoder/register(relationshipMixins:)``.
+        /// on your coder using ``register(mixins:to:)``.
         public subscript<M: Mixin>(mixin mixin: M.Type = M.self) -> M? {
             get {
                 mixins[mixin.mixinKey] as? M
@@ -153,22 +155,47 @@ extension SymbolGraph.Relationship {
     }
 }
 
-
-public extension CustomizableCoder {
+extension SymbolGraph.Relationship {
     /// Register types conforming to ``Mixin`` so they can be included when encoding or
     /// decoding relationships.
     ///
     /// If ``SymbolGraph/Relationship`` does not know the concrete type of a ``Mixin``, it cannot encode
     /// or decode that type and thus skipps such entries. Note that ``Mixin``s that occur on relationships
     /// in the default symbol graph format do not have to be registered!
-    func register(relationshipMixins mixinTypes: Mixin.Type...) {
-        var registeredMixins = self.userInfo[.relationshipMixinKey] as? [String: SymbolGraph.Relationship.CodingKeys] ?? [:]
+    ///
+    /// - Parameter userInfo: A property which allows editing the `userInfo` member of the
+    /// `Encoder`/`Decoder` protocol.
+    public static func register<M: Sequence>(mixins mixinTypes: M,
+                                             to userInfo: inout [CodingUserInfoKey: Any]) where M.Element == Mixin.Type {
+        var registeredMixins = userInfo[.relationshipMixinKey] as? [String: SymbolGraph.Relationship.CodingKeys] ?? [:]
             
         for type in mixinTypes {
             registeredMixins[type.mixinKey] = type.relationshipCodingKey
         }
         
-        self.userInfo[.relationshipMixinKey] = registeredMixins
+        userInfo[.relationshipMixinKey] = registeredMixins
+    }
+}
+
+public extension JSONEncoder {
+    /// Register types conforming to ``Mixin`` so they can be included when encoding relationships.
+    ///
+    /// If ``SymbolGraph/Relationship`` does not know the concrete type of a ``Mixin``, it cannot encode
+    /// that type and thus skipps such entries. Note that ``Mixin``s that occur on relationships
+    /// in the default symbol graph format do not have to be registered!
+    func register(relationshipMixins mixinTypes: Mixin.Type...) {
+        SymbolGraph.Relationship.register(mixins: mixinTypes, to: &self.userInfo)
+    }
+}
+
+public extension JSONDecoder {
+    /// Register types conforming to ``Mixin`` so they can be included when decoding relationships.
+    ///
+    /// If ``SymbolGraph/Relationship`` does not know the concrete type of a ``Mixin``, it cannot decode
+    /// that type and thus skipps such entries. Note that ``Mixin``s that occur on relationships
+    /// in the default symbol graph format do not have to be registered!
+    func register(relationshipMixins mixinTypes: Mixin.Type...) {
+        SymbolGraph.Relationship.register(mixins: mixinTypes, to: &self.userInfo)
     }
 }
 
