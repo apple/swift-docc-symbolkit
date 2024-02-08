@@ -20,11 +20,7 @@ class SymbolGraphCreationTests: XCTestCase {
     func testCreateAndEncodeSymbolGraph() throws {
         let symbolGraph = SymbolGraph(
             metadata: .init(
-                formatVersion: .init(
-                    major: 0,
-                    minor: 5,
-                    patch: 0
-                ),
+                formatVersion: .init(0, 5, 0),
                 generator: "org.swift.SymbolKitTests"
             ),
             module: .init(
@@ -34,7 +30,7 @@ class SymbolGraphCreationTests: XCTestCase {
                     vendor: nil,
                     operatingSystem: .init(
                         name: "MyOS",
-                        minimumVersion: .init(major: 1, minor: 2, patch: 3)
+                        minimumVersion: .init(1, 2, 3)
                     ),
                     environment: nil
                 )
