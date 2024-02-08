@@ -28,7 +28,7 @@ public class UnifiedSymbolGraph {
     public var symbols: [String: UnifiedSymbolGraph.Symbol]
 
     /// The relationships between symbols.
-    @available(*, deprecated, message: "Use unifiedRelationships and orphanRelationships instead")
+    @available(*, deprecated, message: "Use relationshipsByLanguage and orphanRelationships instead")
     public var relationships: [SymbolGraph.Relationship] {
         var allRelations = mergeRelationships(Array(relationshipsByLanguage.values.joined()))
         allRelations.append(contentsOf: self.orphanRelationships)
