@@ -16,7 +16,8 @@ extension UnifiedSymbolGraph: Encodable {
         case moduleData
         case metadata
         case symbols
-        case relationships
+        case relationshipsByLanguage
+        case orphanRelationships
     }
 
     private struct EncodableModuleData: Encodable {
@@ -27,6 +28,11 @@ extension UnifiedSymbolGraph: Encodable {
     private struct EncodableMetadata: Encodable {
         var url: URL
         var metadata: SymbolGraph.Metadata
+    }
+
+    private struct EncodableRelationships: Encodable {
+        var selector: Selector
+        var relationships: [SymbolGraph.Relationship]
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -41,6 +47,10 @@ extension UnifiedSymbolGraph: Encodable {
         try container.encode(encodableMetadata, forKey: .metadata)
 
         try container.encode(Array(symbols.values), forKey: .symbols)
-        try container.encode(relationships, forKey: .relationships)
+
+        let encodableRelationships = relationshipsByLanguage.map({ EncodableRelationships(selector: $0.key, relationships: $0.value) })
+        try container.encode(encodableRelationships, forKey: .relationshipsByLanguage)
+
+        try container.encode(orphanRelationships, forKey: .orphanRelationships)
     }
 }
