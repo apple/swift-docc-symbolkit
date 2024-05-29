@@ -2,7 +2,7 @@
 #
 # This source file is part of the Swift.org open source project
 #
-# Copyright (c) 2022 Apple Inc. and the Swift project authors
+# Copyright (c) 2022-2023 Apple Inc. and the Swift project authors
 # Licensed under Apache License v2.0 with Runtime Library Exception
 #
 # See https://swift.org/LICENSE.txt for license information
@@ -24,32 +24,9 @@ filepath() {
 }
 
 SWIFT_DOCC_SYMBOLKIT_ROOT="$(dirname $(dirname $(filepath $0)))"
-SYMBOL_GRAPH_OUTPUT_DIR="$SWIFT_DOCC_SYMBOLKIT_ROOT/.build/swift-docc/symbol-graphs"
-
-mkdir -p "$SYMBOL_GRAPH_OUTPUT_DIR"
-rm -f "$SYMBOL_GRAPH_OUTPUT_DIR/*.*"
 
 # Set current directory to the repository root
 cd "$SWIFT_DOCC_SYMBOLKIT_ROOT"
-
-# On non-Darwin systems we expect the 'docc' command-line tool to be in the current path.
-# On Darwin, we expect 'docc' to be available via Xcode's 'xcrun'.
-DOCC_CMD=""
-if command -v xcrun &> /dev/null
-then
-    DOCC_CMD="xcrun docc"
-elif command -v docc &> /dev/null
-then
-    DOCC_CMD="docc"
-else
-    echo "Failed to find 'docc' or 'xcrun' in the current path."
-    exit 1
-fi
-
-# Generate symbol graph files for SymbolKit
-swift build --target SymbolKit \
-  -Xswiftc -emit-symbol-graph \
-  -Xswiftc -emit-symbol-graph-dir -Xswiftc "$SYMBOL_GRAPH_OUTPUT_DIR"
 
 # Use git worktree to checkout the gh-pages branch of this repository in a gh-pages sub-directory
 git fetch
@@ -60,13 +37,14 @@ export DOCC_JSON_PRETTYPRINT="YES"
 
 # Generate documentation for the 'SymbolKit' target and output it
 # to the /docs subdirectory in the gh-pages worktree directory.
-$DOCC_CMD convert "$SWIFT_DOCC_SYMBOLKIT_ROOT/Sources/SymbolKit/SymbolKit.docc" \
-    --fallback-display-name SymbolKit \
-    --fallback-bundle-identifier org.swift.SymbolKit \
-    --fallback-bundle-version 1.0.0 \
+swift package \
+    --package-path Documentation \
+    --allow-writing-to-directory "$SWIFT_DOCC_SYMBOLKIT_ROOT/gh-pages/docs" \
+    generate-documentation \
+    --target SymbolKit \
+    --disable-indexing \
     --transform-for-static-hosting \
     --hosting-base-path swift-docc-symbolkit \
-    --additional-symbol-graph-dir "$SYMBOL_GRAPH_OUTPUT_DIR" \
     --output-path "$SWIFT_DOCC_SYMBOLKIT_ROOT/gh-pages/docs"
 
 # Save the current commit we've just built documentation from in a variable
